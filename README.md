@@ -1,12 +1,52 @@
 # Snow Drift
 
-A kinetic wall sculpture that pushes lightweight plastic snow particles
-across a chamber with four small 5V fans, creating a visual effect like
-wind blowing snow across a road. The piece responds to its environment
-through a PIR motion sensor, a BME688 (temperature / humidity / pressure /
-gas), and a BH1750 ambient light sensor. A small OLED reports live
-status. All control is procedural, layered Perlin noise plus occasional
-gust and stillness events, modulated by a sensor-driven mood engine.
+> A kinetic wall sculpture that turns the weather in your room into wind
+> across a chamber of plastic snow.
+
+Four small 5V fans, four GPIO PWM channels, and a few cheap I²C sensors
+turn a Raspberry Pi 5 into a slow, ambient piece that reacts to who's
+in the room and what the air feels like. A **PIR motion sensor** wakes
+it up; a **BME688** (temperature / humidity / pressure / gas) and a
+**BH1750** ambient light sensor shape its mood; a small **SSD1306 OLED**
+reports live status. All control is procedural — layered Perlin noise
+plus occasional gust and stillness events, modulated by a sensor-driven
+**mood engine** that picks one of four named choreography patterns.
+
+```
+              warm + dry                       warm + humid
+            ┌──────────────────────┐         ┌──────────────────────┐
+            │  ░░░  ░░░  ░░░  ░░░  │         │  ░  ░░░░  ░  ░░░░░░  │
+            │   sweep  →  →  →    │         │     vortex (rotates)  │
+            └──────────────────────┘         └──────────────────────┘
+              cool + dry                       cool + humid
+            ┌──────────────────────┐         ┌──────────────────────┐
+            │  ░░░░░░░░░░░░░░░░░░  │         │  ░░  ░  ░░░  ░  ░░░  │
+            │     breath (sync)    │         │   wander (per-fan)   │
+            └──────────────────────┘         └──────────────────────┘
+```
+
+## Highlights
+
+- **Mood-driven choreography** — temperature × humidity selects from
+  `wander` / `sweep` / `vortex` / `breath` patterns, with hysteresis to
+  prevent flapping and a 1.5 s cross-fade between transitions.
+- **Live web UI** on port 8080 — replica of the OLED, animated fan bars,
+  Pi system stats, and tuning controls (master intensity, force-awake,
+  pattern lock, manual fan override). Single self-contained HTML file,
+  no CDN, polls `GET /api/state` 2× per second.
+- **Graceful degradation** — every sensor and the OLED fail soft; a
+  missing chip logs a warning and the loop continues with cached
+  defaults. Develop locally on macOS without any hardware attached.
+- **Ready for unattended install** — systemd unit with `Restart=on-failure`,
+  rate-limiting, memory caps, hardening, and journald-aware structured
+  logging (`<6>` priority prefixes for `journalctl -p` filtering).
+- **Smart wind algorithm** — non-blocking sensor poller in a daemon
+  thread, `dt`-aware exponential smoothing, monotonic time everywhere,
+  internal time-wrap to keep float magnitudes bounded over month-long
+  runs.
+
+> 📷 *Photos / video to come once the chamber's permanent housing is
+> mounted on the wall.*
 
 ## Hardware
 
@@ -76,7 +116,7 @@ gets a clean, jitter-free duty cycle.
    when not using a venv):
 
    ```bash
-   pip install -r requirements.txt --break-system-packages
+   pip install -r snow_drift/requirements.txt --break-system-packages
    ```
 
 3. Verify the I²C bus sees every device, you should see `23`, `3c`,
@@ -89,8 +129,8 @@ gets a clean, jitter-free duty cycle.
 ## Running
 
 The whole project is a Python package under `snow_drift/`. Each test is
-runnable as a module so imports always resolve correctly. From the
-parent directory of this folder:
+runnable as a module so imports always resolve correctly. From the repo
+root:
 
 ```bash
 # Bring-up tests, in order
@@ -301,12 +341,12 @@ sensors → mood_engine → wind_algorithm → fan_controller
 
 ```
 snow-drift/                          # repo root
+├── README.md
 ├── deploy/
 │   ├── snow-drift.service.template  # systemd unit (placeholders)
 │   ├── install.sh                   # render + install + enable
 │   └── uninstall.sh                 # symmetric removal
 └── snow_drift/                      # Python package
-    ├── README.md
     ├── requirements.txt
     ├── __init__.py
     ├── __main__.py
