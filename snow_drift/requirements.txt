@@ -19,3 +19,8 @@ adafruit-circuitpython-bme680>=3.4
 
 # Ambient light sensor
 adafruit-circuitpython-bh1750>=1.1
+
+# Local web UI (FastAPI server + ASGI runner). Pulls in pydantic v2
+# and starlette as transitive deps. ~25 MB total.
+fastapi>=0.110
+uvicorn>=0.27

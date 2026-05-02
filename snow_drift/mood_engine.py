@@ -86,7 +86,9 @@ class MoodEngine:
     # ------------------------------------------------------------------
     # Presence (PIR) state machine
     # ------------------------------------------------------------------
-    def update_presence(self, motion_detected: bool) -> None:
+    def update_presence(
+        self, motion_detected: bool, force_awake: bool = False
+    ) -> None:
         """Advance the AWAKE / SLEEPING / ASLEEP / WAKING state machine.
 
         Transitions:
@@ -96,8 +98,25 @@ class MoodEngine:
         - ``ASLEEP``   →  ``WAKING``   on motion
         - ``SLEEPING`` →  ``WAKING``   on motion
         - ``WAKING``   →  ``AWAKE``    after WAKE_FADE_IN_SECONDS
+
+        ``force_awake=True`` (driven by the web UI's "force awake"
+        toggle) keeps the piece in AWAKE regardless of PIR activity.
+        We refresh ``last_motion_time`` every tick while it's set so a
+        return to normal mode doesn't immediately count the override
+        period as idle time.
         """
         now = time.monotonic()
+        if force_awake:
+            self.last_motion_time = now
+            if self.presence_state != "AWAKE":
+                logger.info(
+                    "Presence: %s → AWAKE (forced via runtime settings)",
+                    self.presence_state,
+                )
+                self.presence_state = "AWAKE"
+                self.wake_started_at = None
+                self.sleep_started_at = None
+            return
         if motion_detected:
             self.last_motion_time = now
 

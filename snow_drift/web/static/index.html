@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Snow Drift</title>
+<style>
+  /* ------------------------------------------------------------------
+     Self-contained, no CDN. The Pi shouldn't need internet for its
+     own admin UI. Dark theme by default; system theme is respected.
+  ------------------------------------------------------------------ */
+  :root {
+    --bg: #0e1116;
+    --panel: #161b22;
+    --panel-2: #1f2630;
+    --border: #2a313c;
+    --text: #e6edf3;
+    --text-dim: #8b949e;
+    --accent: #58a6ff;
+    --accent-2: #79c0ff;
+    --good: #3fb950;
+    --warn: #d29922;
+    --bad: #f85149;
+    --fan: #79c0ff;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f6f8fa;
+      --panel: #ffffff;
+      --panel-2: #f0f3f6;
+      --border: #d0d7de;
+      --text: #1f2328;
+      --text-dim: #59636e;
+      --accent: #0969da;
+      --accent-2: #0550ae;
+      --good: #1a7f37;
+      --warn: #9a6700;
+      --bad: #cf222e;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--text);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI",
+          system-ui, sans-serif;
+  }
+  body { padding: 16px; max-width: 1100px; margin: 0 auto; }
+
+  header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    flex-wrap: wrap; gap: 8px; margin-bottom: 16px;
+  }
+  header h1 {
+    margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em;
+  }
+  header .uptime { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .conn { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); }
+  .dot.ok { background: var(--good); box-shadow: 0 0 8px rgba(63,185,80,.5); }
+  .dot.bad { background: var(--bad); }
+
+  .grid { display: grid; gap: 12px; grid-template-columns: 1fr; }
+  @media (min-width: 720px) { .grid { grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 1000px) { .grid { grid-template-columns: 1.1fr 1fr 1fr; } }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px;
+  }
+  .panel h2 {
+    margin: 0 0 10px; font-size: 12px; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--text-dim); font-weight: 600;
+  }
+
+  /* OLED-replica panel ------------------------------------------- */
+  .oled {
+    grid-column: 1 / -1;
+  }
+  .oled-screen {
+    background: #000; color: #b6e3ff; padding: 10px 14px; border-radius: 6px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px; line-height: 1.5; white-space: pre;
+    border: 1px solid #1c2129; overflow: hidden;
+  }
+  .oled-screen .row { display: grid; grid-template-columns: 1fr 1fr; }
+  .oled-screen .row span:nth-child(2) { text-align: right; }
+  .oled-screen .row.full { grid-template-columns: 1fr; }
+  .oled-screen .dim { color: #5a87ad; }
+
+  /* Fan bars ----------------------------------------------------- */
+  .fans { display: grid; gap: 8px; }
+  .fan-row {
+    display: grid; grid-template-columns: 36px 1fr 50px;
+    align-items: center; gap: 10px;
+  }
+  .fan-row .label { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .fan-row .pct { text-align: right; font-variant-numeric: tabular-nums; }
+  .bar {
+    height: 10px; background: var(--panel-2); border-radius: 5px; overflow: hidden;
+  }
+  .bar > .fill {
+    height: 100%; background: var(--fan);
+    transition: width 120ms linear;
+    border-radius: 5px;
+  }
+
+  /* Stat cards --------------------------------------------------- */
+  dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; }
+  dt { color: var(--text-dim); }
+  dd {
+    margin: 0; text-align: right; font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+
+  /* Controls ----------------------------------------------------- */
+  .controls { display: grid; gap: 14px; }
+  .control { display: grid; gap: 6px; }
+  .control header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin: 0;
+  }
+  .control label { font-size: 13px; color: var(--text-dim); }
+  .control .val { font-variant-numeric: tabular-nums; font-weight: 600; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+
+  /* Toggle switch */
+  .switch {
+    position: relative; width: 38px; height: 22px; flex-shrink: 0;
+    background: var(--panel-2); border-radius: 11px;
+    cursor: pointer; transition: background 120ms ease;
+    border: 1px solid var(--border);
+  }
+  .switch::after {
+    content: ""; position: absolute; top: 2px; left: 2px;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--text-dim); transition: all 120ms ease;
+  }
+  .switch.on { background: var(--accent); border-color: var(--accent); }
+  .switch.on::after { left: 18px; background: white; }
+
+  .row-flex { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  button {
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 12px; font: inherit; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: white; }
+  button.primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
+
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 999px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+    background: var(--panel-2); color: var(--text-dim);
+    border: 1px solid var(--border);
+  }
+  .badge.awake   { color: var(--good);  border-color: var(--good); }
+  .badge.sleeping{ color: var(--warn);  border-color: var(--warn); }
+  .badge.asleep  { color: var(--text-dim); }
+  .badge.waking  { color: var(--accent); border-color: var(--accent); }
+  .badge.warn    { color: var(--warn);  border-color: var(--warn); }
+  .badge.bad     { color: var(--bad);   border-color: var(--bad); }
+
+  .muted { color: var(--text-dim); }
+  .small { font-size: 12px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Snow Drift</h1>
+    <div class="small muted">
+      <span id="presence" class="badge">—</span>
+      <span id="mood" class="muted" style="margin-left:8px">—</span>
+    </div>
+  </div>
+  <div class="row-flex">
+    <span class="conn"><span class="dot" id="conn-dot"></span><span id="conn-label">connecting…</span></span>
+    <span class="uptime" id="uptime">—</span>
+  </div>
+</header>
+
+<section class="panel oled">
+  <h2>Live OLED</h2>
+  <div class="oled-screen" id="oled">
+    <div class="row"><span>Snow Drift</span><span id="o-uptime" class="dim">--:--:--</span></div>
+    <div class="row"><span>F1: <span id="o-f1">--%</span></span><span>F3: <span id="o-f3">--%</span></span></div>
+    <div class="row"><span>F2: <span id="o-f2">--%</span></span><span>F4: <span id="o-f4">--%</span></span></div>
+    <div class="row full dim"><span><span id="o-sensors">T:--F H:--% Lx:--</span></span></div>
+    <div class="row full"><span><span id="o-state">State: -- Mood: --</span></span></div>
+  </div>
+</section>
+
+<div class="grid">
+
+  <section class="panel">
+    <h2>Fans</h2>
+    <div class="fans" id="fans"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Sensors</h2>
+    <dl>
+      <dt>Motion</dt>             <dd id="s-motion">—</dd>
+      <dt>Temperature</dt>        <dd id="s-temp">—</dd>
+      <dt>Humidity</dt>           <dd id="s-humidity">—</dd>
+      <dt>Light</dt>              <dd id="s-lux">—</dd>
+      <dt>Visibility factor</dt>  <dd id="s-vis">—</dd>
+      <dt>Mood (intensity)</dt>   <dd id="s-int">—</dd>
+      <dt>Mood (chaos)</dt>       <dd id="s-chaos">—</dd>
+    </dl>
+  </section>
+
+  <section class="panel">
+    <h2>Raspberry Pi</h2>
+    <dl>
+      <dt>CPU temp</dt>           <dd id="p-cputemp">—</dd>
+      <dt>Load avg</dt>           <dd id="p-load">—</dd>
+      <dt>Memory</dt>             <dd id="p-mem">—</dd>
+      <dt>Disk /</dt>             <dd id="p-disk">—</dd>
+      <dt>System uptime</dt>      <dd id="p-uptime">—</dd>
+      <dt>Throttle</dt>           <dd id="p-throttle">—</dd>
+      <dt>Loop age</dt>           <dd id="p-loop">—</dd>
+    </dl>
+  </section>
+
+  <section class="panel" style="grid-column: 1 / -1">
+    <h2>Controls</h2>
+    <div class="controls">
+
+      <div class="control">
+        <header>
+          <label for="c-intensity">Master intensity</label>
+          <span class="val" id="c-intensity-val">—</span>
+        </header>
+        <input id="c-intensity" type="range" min="0" max="2" step="0.05" value="1" />
+        <div class="small muted">Multiplies the algorithm's commanded base intensity. 1.0 = unchanged.</div>
+      </div>
+
+      <div class="control">
+        <header>
+          <label>Force awake</label>
+          <div class="switch" id="c-force-awake" role="switch" aria-checked="false" tabindex="0"></div>
+        </header>
+        <div class="small muted">Pin presence to AWAKE so the piece doesn't sleep during a viewing.</div>
+      </div>
+
+      <div class="control">
+        <header>
+          <label>Manual fan override</label>
+          <div class="row-flex">
+            <span class="small muted" id="c-manual-status">auto</span>
+            <button id="c-manual-clear">Release to auto</button>
+          </div>
+        </header>
+        <div class="fans" id="c-fans"></div>
+        <div class="small muted">Drag any slider to take control. Hit "Release to auto" to hand back to the algorithm.</div>
+      </div>
+
+    </div>
+  </section>
+
+</div>
+
+<script>
+"use strict";
+
+// ---------------- helpers ----------------
+const $ = (id) => document.getElementById(id);
+const NUM_FANS = 4;
+const fmtPct = (v) => v == null ? "—" : `${Math.round(v * 100)}%`;
+const fmtPctOf100 = (v) => v == null ? "—" : `${Math.round(v)}%`;
+const fmtNum = (v, d = 1) => v == null ? "—" : Number(v).toFixed(d);
+const fmtBytes = (b) => {
+  if (b == null) return "—";
+  const u = ["B", "KB", "MB", "GB", "TB"]; let i = 0;
+  while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+  return `${b.toFixed(b < 10 ? 1 : 0)} ${u[i]}`;
+};
+const fmtUptime = (s) => {
+  if (s == null) return "—";
+  s = Math.max(0, Math.floor(s));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
+};
+const cToF = (c) => c == null ? null : c * 9 / 5 + 32;
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    headers: { "Content-Type": "application/json" }, ...opts,
+  });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
+}
+
+// ---------------- fan rows (live) ----------------
+const fansEl = $("fans");
+for (let i = 0; i < NUM_FANS; i++) {
+  fansEl.insertAdjacentHTML("beforeend", `
+    <div class="fan-row">
+      <span class="label">F${i + 1}</span>
+      <div class="bar"><div class="fill" id="fan-fill-${i}" style="width:0%"></div></div>
+      <span class="pct" id="fan-pct-${i}">—</span>
+    </div>`);
+}
+
+// ---------------- manual fan sliders ----------------
+const manualEl = $("c-fans");
+const manualSliders = [];
+let userTouchingManual = false;
+for (let i = 0; i < NUM_FANS; i++) {
+  manualEl.insertAdjacentHTML("beforeend", `
+    <div class="fan-row">
+      <span class="label">F${i + 1}</span>
+      <input type="range" min="0" max="1" step="0.01" value="0" id="m-fan-${i}" />
+      <span class="pct" id="m-fan-val-${i}">0%</span>
+    </div>`);
+  const slider = $(`m-fan-${i}`);
+  manualSliders.push(slider);
+  slider.addEventListener("input", () => {
+    $(`m-fan-val-${i}`).textContent = fmtPct(parseFloat(slider.value));
+    userTouchingManual = true;
+  });
+  slider.addEventListener("change", async () => {
+    const speeds = manualSliders.map((s) => parseFloat(s.value));
+    try {
+      await api("/api/control/fans", { method: "POST", body: JSON.stringify({ speeds }) });
+    } finally {
+      // Allow auto-sync to resume after a beat.
+      setTimeout(() => { userTouchingManual = false; }, 1500);
+    }
+  });
+}
+
+$("c-manual-clear").addEventListener("click", async () => {
+  await api("/api/control/fans", { method: "POST", body: JSON.stringify({ speeds: null }) });
+  userTouchingManual = false;
+});
+
+// ---------------- intensity slider ----------------
+const intensityEl = $("c-intensity");
+let userTouchingIntensity = false;
+intensityEl.addEventListener("input", () => {
+  $("c-intensity-val").textContent = `${Number(intensityEl.value).toFixed(2)}×`;
+  userTouchingIntensity = true;
+});
+intensityEl.addEventListener("change", async () => {
+  await api("/api/control/intensity", {
+    method: "POST",
+    body: JSON.stringify({ multiplier: parseFloat(intensityEl.value) }),
+  });
+  setTimeout(() => { userTouchingIntensity = false; }, 1500);
+});
+
+// ---------------- force-awake switch ----------------
+const forceAwakeEl = $("c-force-awake");
+async function toggleForceAwake() {
+  const next = !forceAwakeEl.classList.contains("on");
+  forceAwakeEl.classList.toggle("on", next);
+  forceAwakeEl.setAttribute("aria-checked", String(next));
+  await api("/api/control/force-awake", {
+    method: "POST", body: JSON.stringify({ enabled: next }),
+  });
+}
+forceAwakeEl.addEventListener("click", toggleForceAwake);
+forceAwakeEl.addEventListener("keydown", (e) => {
+  if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggleForceAwake(); }
+});
+
+// ---------------- live render ----------------
+function setBadge(el, label, klass) {
+  el.textContent = label;
+  el.className = "badge " + (klass || "");
+}
+
+function render(state) {
+  if (!state) return;
+  const fans = state.fan_speeds || [0, 0, 0, 0];
+  const settings = state.settings || {};
+  const sys = state.system || {};
+  const env = state.env || {};
+  const mood = state.mood || {};
+
+  // OLED replica
+  $("o-uptime").textContent = fmtUptime(state.uptime_seconds);
+  $("o-f1").textContent = fmtPct(fans[0]);
+  $("o-f2").textContent = fmtPct(fans[1]);
+  $("o-f3").textContent = fmtPct(fans[2]);
+  $("o-f4").textContent = fmtPct(fans[3]);
+  const tF = (env.temperature_f != null) ? Math.round(env.temperature_f) : "--";
+  const rh = (env.humidity != null) ? Math.round(env.humidity) : "--";
+  const lx = (env.lux != null) ? Math.round(env.lux) : "--";
+  $("o-sensors").textContent = `T:${tF}F H:${rh}% Lx:${lx}`;
+  $("o-state").textContent = `State: ${state.presence_state || "?"}  Mood: ${mood.label || "?"}`;
+
+  // Header
+  $("uptime").textContent = fmtUptime(state.uptime_seconds);
+  const ps = (state.presence_state || "—").toLowerCase();
+  setBadge($("presence"), state.presence_state || "—", ps);
+  $("mood").textContent = mood.label || "—";
+
+  // Fan bars
+  for (let i = 0; i < NUM_FANS; i++) {
+    const v = fans[i] || 0;
+    $(`fan-fill-${i}`).style.width = `${(v * 100).toFixed(1)}%`;
+    $(`fan-pct-${i}`).textContent = fmtPct(v);
+  }
+
+  // Sensors
+  $("s-motion").textContent = state.motion ? "TRIGGERED" : "quiet";
+  $("s-temp").textContent = env.temperature_f != null
+    ? `${env.temperature_f.toFixed(1)} °F (${env.temperature_c?.toFixed?.(1) ?? "—"} °C)`
+    : "—";
+  $("s-humidity").textContent = env.humidity != null ? `${env.humidity.toFixed(1)} %` : "—";
+  $("s-lux").textContent = env.lux != null ? `${env.lux.toFixed(1)} lx` : "—";
+  $("s-vis").textContent = fmtNum(mood.visibility_factor, 2);
+  $("s-int").textContent = fmtNum(mood.base_intensity, 3);
+  $("s-chaos").textContent = fmtNum(mood.gust_rate, 3);
+
+  // System
+  $("p-cputemp").innerHTML = sys.cpu_temp_c == null ? "—"
+    : `${sys.cpu_temp_c.toFixed(1)} °C` +
+      (sys.cpu_temp_c > 80 ? ' <span class="badge bad">hot</span>' :
+       sys.cpu_temp_c > 70 ? ' <span class="badge warn">warm</span>' : '');
+  $("p-load").textContent = sys.load_1m == null ? "—"
+    : `${sys.load_1m.toFixed(2)} / ${sys.load_5m?.toFixed?.(2)} / ${sys.load_15m?.toFixed?.(2)}`;
+  $("p-mem").textContent = sys.mem_total_bytes == null ? "—"
+    : `${fmtBytes(sys.mem_used_bytes)} / ${fmtBytes(sys.mem_total_bytes)} (${fmtPctOf100(sys.mem_pct)})`;
+  $("p-disk").textContent = sys.disk_total_bytes == null ? "—"
+    : `${fmtBytes(sys.disk_used_bytes)} / ${fmtBytes(sys.disk_total_bytes)} (${fmtPctOf100(sys.disk_pct)})`;
+  $("p-uptime").textContent = fmtUptime(sys.system_uptime_seconds);
+  const thr = sys.throttle || {};
+  if (!thr.value && thr.value !== 0) {
+    $("p-throttle").textContent = "—";
+  } else if (!thr.value) {
+    $("p-throttle").innerHTML = `<span class="badge" style="color:var(--good);border-color:var(--good)">clean</span>`;
+  } else {
+    const cls = thr.throttled_now ? "bad" : "warn";
+    $("p-throttle").innerHTML = `<span class="badge ${cls}">${thr.flags.join(", ") || thr.raw}</span>`;
+  }
+  const age = state._age_s;
+  if (age == null || !isFinite(age)) {
+    $("p-loop").textContent = "—";
+  } else {
+    const cls = age > 2 ? "bad" : age > 0.5 ? "warn" : "";
+    $("p-loop").innerHTML = `${(age * 1000).toFixed(0)} ms` +
+      (cls ? ` <span class="badge ${cls}">stalled?</span>` : "");
+  }
+
+  // Controls (don't fight the user mid-drag)
+  if (!userTouchingIntensity && settings.intensity_multiplier != null) {
+    intensityEl.value = settings.intensity_multiplier;
+    $("c-intensity-val").textContent = `${Number(settings.intensity_multiplier).toFixed(2)}×`;
+  }
+  forceAwakeEl.classList.toggle("on", !!settings.force_awake);
+  forceAwakeEl.setAttribute("aria-checked", String(!!settings.force_awake));
+  if (!userTouchingManual) {
+    const m = settings.manual_fan_speeds;
+    if (m) {
+      $("c-manual-status").textContent = "manual override active";
+      manualSliders.forEach((sl, i) => {
+        sl.value = m[i] ?? 0;
+        $(`m-fan-val-${i}`).textContent = fmtPct(m[i] ?? 0);
+      });
+    } else {
+      $("c-manual-status").textContent = "auto";
+      manualSliders.forEach((sl, i) => {
+        sl.value = fans[i] ?? 0;
+        $(`m-fan-val-${i}`).textContent = fmtPct(fans[i] ?? 0);
+      });
+    }
+  }
+}
+
+// ---------------- polling ----------------
+let pollTimer = null;
+async function pollOnce() {
+  try {
+    const state = await api("/api/state");
+    $("conn-dot").className = "dot ok";
+    $("conn-label").textContent = "live";
+    render(state);
+  } catch (err) {
+    $("conn-dot").className = "dot bad";
+    $("conn-label").textContent = "disconnected";
+  } finally {
+    pollTimer = setTimeout(pollOnce, 500);
+  }
+}
+pollOnce();
+
+// Pause polling when the tab is hidden to save Pi cycles.
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    if (pollTimer) clearTimeout(pollTimer);
+    pollTimer = null;
+  } else if (!pollTimer) {
+    pollOnce();
+  }
+});
+</script>
+</body>
+</html>

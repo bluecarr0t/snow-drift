@@ -109,6 +109,48 @@ python snow_drift/main.py
 `Ctrl+C` shuts everything down cleanly: fans go to 0%, OLED clears,
 GPIO is released.
 
+## Web UI
+
+`main.py` starts a small FastAPI server on **port 8080** in a daemon
+thread. Open `http://<pi-host>:8080/` from any device on the local
+network to see:
+
+- A live replica of the OLED layout
+- Per-fan duty cycles (animated bars)
+- Live sensor readings (motion, temperature, humidity, lux)
+- Pi system stats (CPU temp, load, memory, disk, throttle status)
+- Loop "age" indicator that turns yellow / red if the main loop stalls
+
+…and three controls:
+
+- **Master intensity** (0×–2× slider) — boosts or trims overall energy
+  without touching `config.py`.
+- **Force awake** toggle — pins presence to AWAKE during a viewing so
+  the piece doesn't go to sleep while people are watching it.
+- **Manual fan override** — per-fan sliders that take complete control
+  of the fans. Useful for show-floor demos and acceptance testing.
+  Click "Release to auto" to hand back to the algorithm.
+
+The page polls `GET /api/state` every 500 ms (and pauses polling when
+the tab is hidden, so leaving it open isn't a Pi tax). All controls
+POST to small endpoints; FastAPI's auto-generated schema docs live at
+`/api/docs`.
+
+### REST endpoints
+
+```
+GET  /api/state            # everything (loop snapshot + system + settings)
+GET  /api/health           # {ok: bool, loop_age_s: float}
+GET  /api/config           # current runtime settings
+POST /api/config           # bulk-update any subset of settings
+POST /api/control/fans     # {"speeds":[...]} or {"speeds":null} to release
+POST /api/control/intensity         # {"multiplier": 0.0..2.0}
+POST /api/control/force-awake       # {"enabled": bool}
+```
+
+The web UI is a single `index.html` (no CDN, no build step), so the
+Pi has no internet dependency for its own admin surface.
+
 ## Auto-start as a systemd service
 
 For permanent installations, run Snow Drift under systemd so it
@@ -239,6 +281,14 @@ snow-drift/                          # repo root
     ├── tools/
     │   ├── __init__.py
     │   └── fan_console.py
+    ├── runtime_settings.py
+    ├── web/
+    │   ├── __init__.py
+    │   ├── server.py
+    │   ├── shared_state.py
+    │   ├── system_stats.py
+    │   └── static/
+    │       └── index.html
     ├── utils/
     │   ├── __init__.py
     │   └── perlin.py
