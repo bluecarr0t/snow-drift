@@ -81,32 +81,25 @@ button:focus-visible, input:focus-visible, [role="button"]:focus-visible {
 
 /* ----- Layout ------------------------------------------------------------ */
 .app {
-  display: grid;
-  grid-template-columns: 240px 1fr;
+  display: flex; flex-direction: column;
   min-height: 100vh;
 }
-@media (max-width: 800px) {
-  .app { grid-template-columns: 1fr; }
-  .sidebar { display: none; }
+.main {
+  display: flex; flex-direction: column;
+  min-width: 0;
 }
 
-/* ----- Sidebar ----------------------------------------------------------- */
-.sidebar {
-  background: var(--surface);
-  border-right: 1px solid var(--border);
-  padding: 14px 12px;
-  display: flex; flex-direction: column; gap: 14px;
-  position: sticky; top: 0; height: 100vh;
-}
+/* ----- Brand (now lives in the top bar) --------------------------------- */
 .brand {
   display: flex; align-items: center; gap: 8px;
-  padding: 6px 8px; font-weight: 600; letter-spacing: -0.01em;
+  font-weight: 600; letter-spacing: -0.01em;
 }
 .brand-mark {
   width: 22px; height: 22px; border-radius: 6px;
   background: linear-gradient(135deg, #cfe9ff 0%, #79b9ff 60%, #2563eb 100%);
   position: relative;
   box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08);
+  flex-shrink: 0;
 }
 .brand-mark::after {
   content: ""; position: absolute; inset: 4px;
@@ -115,55 +108,6 @@ button:focus-visible, input:focus-visible, [role="button"]:focus-visible {
     radial-gradient(circle at 70% 50%, white 0 1px, transparent 1.5px),
     radial-gradient(circle at 40% 75%, white 0 1px, transparent 1.5px);
   opacity: 0.85;
-}
-
-.search {
-  position: relative;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 7px 10px 7px 30px;
-  display: flex; align-items: center;
-  font-size: 13px; color: var(--text-dim);
-}
-.search::before {
-  content: ""; position: absolute; left: 10px; top: 50%;
-  width: 13px; height: 13px; transform: translateY(-50%);
-  background: currentColor;
-  -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.5" y2="16.5"/></svg>') center/contain no-repeat;
-          mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.5" y2="16.5"/></svg>') center/contain no-repeat;
-  opacity: 0.75;
-}
-.search input {
-  flex: 1; background: transparent; border: 0; outline: none;
-  color: var(--text); font: inherit;
-}
-
-.nav-label {
-  padding: 0 8px; font-size: 11px; text-transform: uppercase;
-  letter-spacing: 0.06em; color: var(--text-dim); margin-top: 6px;
-}
-.nav { display: flex; flex-direction: column; gap: 2px; }
-.nav a {
-  display: flex; align-items: center; gap: 9px;
-  padding: 7px 8px; border-radius: 6px;
-  color: var(--text-2); text-decoration: none; font-size: 13.5px;
-}
-.nav a:hover { background: var(--chip-bg); color: var(--text); }
-.nav a.active { background: var(--chip-bg); color: var(--text); font-weight: 500; }
-.nav a svg { width: 15px; height: 15px; flex-shrink: 0; }
-
-.sidebar-footer {
-  margin-top: auto;
-  padding: 10px 8px; font-size: 11px; color: var(--text-dim);
-  border-top: 1px solid var(--border);
-  display: flex; align-items: center; gap: 6px;
-}
-
-/* ----- Main column ------------------------------------------------------- */
-.main {
-  display: flex; flex-direction: column;
-  min-width: 0; /* lets children shrink below content size */
 }
 
 .topbar {
@@ -181,11 +125,11 @@ button:focus-visible, input:focus-visible, [role="button"]:focus-visible {
 }
 
 .crumb {
-  display: flex; align-items: center; gap: 8px;
-  font-weight: 600; letter-spacing: -0.01em;
+  display: inline-flex; align-items: center; gap: 8px;
+  font-weight: 500; color: var(--text-2);
 }
 .crumb .sep { color: var(--text-dim); font-weight: 400; }
-.crumb .page { color: var(--text); }
+.crumb .page { color: var(--text); font-weight: 600; }
 
 .chips {
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
@@ -227,9 +171,10 @@ button:focus-visible, input:focus-visible, [role="button"]:focus-visible {
 
 /* ----- Content / Cards --------------------------------------------------- */
 .content {
-  padding: 18px 22px 60px; display: flex; flex-direction: column; gap: 14px;
-  max-width: 1400px; width: 100%;
+  padding: 18px 28px 60px; display: flex; flex-direction: column; gap: 14px;
+  max-width: 1400px; width: 100%; margin: 0 auto;
 }
+.topbar { padding-left: 28px; padding-right: 28px; }
 
 .row { display: grid; gap: 14px; }
 .row.cols-2 { grid-template-columns: 1.55fr 1fr; }
@@ -479,56 +424,14 @@ input[type=range]::-moz-range-thumb {
 
 <div class="app">
 
-  <!-- ============ Sidebar ================================================ -->
-  <aside class="sidebar">
-    <div class="brand">
-      <div class="brand-mark"></div>
-      <span>Snow Drift</span>
-    </div>
-
-    <div class="search" role="search">
-      <input id="quick-actions" placeholder="Quick actions…" aria-label="Quick actions" />
-    </div>
-
-    <div class="nav-label">Pages</div>
-    <nav class="nav" aria-label="Sections">
-      <a href="#overview" class="active" data-section="overview">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-        Overview
-      </a>
-      <a href="#patterns" data-section="patterns">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12c2-4 5-4 7 0s5 4 7 0 5-4 4-3"/></svg>
-        Patterns
-      </a>
-      <a href="#sensors" data-section="sensors">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3"/><path d="M12 18v3"/><path d="M3 12h3"/><path d="M18 12h3"/><circle cx="12" cy="12" r="4"/></svg>
-        Sensors
-      </a>
-      <a href="#system" data-section="system">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/><path d="M12 16v4"/></svg>
-        System
-      </a>
-      <a href="#tuning" data-section="tuning">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="12" r="2"/><circle cx="6" cy="18" r="2"/><path d="M8 6h12"/><path d="M4 12h12"/><path d="M8 18h12"/></svg>
-        Tuning
-      </a>
-    </nav>
-
-    <div class="sidebar-footer">
-      <span>Snow Drift</span>
-      <span class="muted">v0.1</span>
-    </div>
-  </aside>
-
-  <!-- ============ Main =================================================== -->
   <div class="main">
 
     <!-- ====== Top bar -->
     <div class="topbar">
-      <div class="crumb">
-        <span class="muted">Snow Drift</span>
-        <span class="sep">/</span>
-        <span class="page">Overview</span>
+      <div class="brand">
+        <div class="brand-mark"></div>
+        <span>Snow Drift</span>
+        <span class="crumb"><span class="sep">/</span><span class="page">Overview</span></span>
       </div>
       <div class="chips" id="state-chips">
         <span class="chip" id="chip-presence">presence —</span>
@@ -1319,16 +1222,6 @@ function applyTuningFromState(state) {
     }
   }
 }
-
-/* ============================================================================
- * Sidebar nav scroll-spy
- * ============================================================================ */
-document.querySelectorAll(".nav a[data-section]").forEach((a) => {
-  a.addEventListener("click", (e) => {
-    document.querySelectorAll(".nav a").forEach((b) => b.classList.remove("active"));
-    a.classList.add("active");
-  });
-});
 
 /* ============================================================================
  * Polling loop
