@@ -5,321 +5,763 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Snow Drift</title>
 <style>
-  /* ------------------------------------------------------------------
-     Self-contained, no CDN. The Pi shouldn't need internet for its
-     own admin UI. Dark theme by default; system theme is respected.
-  ------------------------------------------------------------------ */
+/* ==========================================================================
+   Self-contained dashboard for Snow Drift. No CDN, no build step - the Pi
+   admin surface should never need internet. Light theme primary; system
+   dark mode honoured via prefers-color-scheme.
+   ========================================================================== */
+
+:root {
+  --bg: #f7f8fa;
+  --surface: #ffffff;
+  --surface-2: #fafbfc;
+  --border: #e6e8eb;
+  --border-strong: #d6d9dd;
+  --text: #1a1d21;
+  --text-2: #4d5560;
+  --text-dim: #8a929c;
+  --accent: #0b0d10;          /* near-black like Peec's primary action */
+  --accent-fg: #ffffff;
+  --link: #2563eb;
+  --good: #16a34a;
+  --good-bg: #ecfdf5;
+  --warn: #b45309;
+  --warn-bg: #fef3c7;
+  --bad: #dc2626;
+  --bad-bg: #fef2f2;
+  --chip-bg: #f1f3f5;
+  --chip-bg-hover: #e7eaee;
+
+  --fan-1: #2563eb;  /* blue */
+  --fan-2: #db2777;  /* pink */
+  --fan-3: #16a34a;  /* green */
+  --fan-4: #ea580c;  /* orange */
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --radius: 10px;
+  --radius-sm: 6px;
+}
+
+@media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0e1116;
-    --panel: #161b22;
-    --panel-2: #1f2630;
-    --border: #2a313c;
-    --text: #e6edf3;
-    --text-dim: #8b949e;
-    --accent: #58a6ff;
-    --accent-2: #79c0ff;
-    --good: #3fb950;
-    --warn: #d29922;
-    --bad: #f85149;
-    --fan: #79c0ff;
+    --bg: #0c0e11;
+    --surface: #14171c;
+    --surface-2: #181c22;
+    --border: #232831;
+    --border-strong: #2c323c;
+    --text: #e7eaee;
+    --text-2: #b6bcc6;
+    --text-dim: #79808a;
+    --accent: #f7f8fa;
+    --accent-fg: #0c0e11;
+    --link: #60a5fa;
+    --good: #4ade80;
+    --good-bg: rgba(34,197,94,.12);
+    --warn: #facc15;
+    --warn-bg: rgba(250,204,21,.12);
+    --bad: #f87171;
+    --bad-bg: rgba(248,113,113,.12);
+    --chip-bg: #1e242c;
+    --chip-bg-hover: #262d36;
   }
-  @media (prefers-color-scheme: light) {
-    :root {
-      --bg: #f6f8fa;
-      --panel: #ffffff;
-      --panel-2: #f0f3f6;
-      --border: #d0d7de;
-      --text: #1f2328;
-      --text-dim: #59636e;
-      --accent: #0969da;
-      --accent-2: #0550ae;
-      --good: #1a7f37;
-      --warn: #9a6700;
-      --bad: #cf222e;
-    }
-  }
+}
 
-  * { box-sizing: border-box; }
-  html, body {
-    margin: 0; padding: 0;
-    background: var(--bg); color: var(--text);
-    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI",
-          system-ui, sans-serif;
-  }
-  body { padding: 16px; max-width: 1100px; margin: 0 auto; }
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  background: var(--bg); color: var(--text);
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI",
+        system-ui, sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+button { font: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible, [role="button"]:focus-visible {
+  outline: 2px solid var(--link); outline-offset: 2px;
+}
 
-  header {
-    display: flex; align-items: baseline; justify-content: space-between;
-    flex-wrap: wrap; gap: 8px; margin-bottom: 16px;
-  }
-  header h1 {
-    margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em;
-  }
-  header .uptime { color: var(--text-dim); font-variant-numeric: tabular-nums; }
-  .conn { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); }
-  .dot.ok { background: var(--good); box-shadow: 0 0 8px rgba(63,185,80,.5); }
-  .dot.bad { background: var(--bad); }
+/* ----- Layout ------------------------------------------------------------ */
+.app {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
+}
+@media (max-width: 800px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+}
 
-  .grid { display: grid; gap: 12px; grid-template-columns: 1fr; }
-  @media (min-width: 720px) { .grid { grid-template-columns: 1fr 1fr; } }
-  @media (min-width: 1000px) { .grid { grid-template-columns: 1.1fr 1fr 1fr; } }
+/* ----- Sidebar ----------------------------------------------------------- */
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 14px 12px;
+  display: flex; flex-direction: column; gap: 14px;
+  position: sticky; top: 0; height: 100vh;
+}
+.brand {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px; font-weight: 600; letter-spacing: -0.01em;
+}
+.brand-mark {
+  width: 22px; height: 22px; border-radius: 6px;
+  background: linear-gradient(135deg, #cfe9ff 0%, #79b9ff 60%, #2563eb 100%);
+  position: relative;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08);
+}
+.brand-mark::after {
+  content: ""; position: absolute; inset: 4px;
+  background:
+    radial-gradient(circle at 30% 30%, white 0 1px, transparent 1.5px),
+    radial-gradient(circle at 70% 50%, white 0 1px, transparent 1.5px),
+    radial-gradient(circle at 40% 75%, white 0 1px, transparent 1.5px);
+  opacity: 0.85;
+}
 
-  .panel {
-    background: var(--panel); border: 1px solid var(--border);
-    border-radius: 10px; padding: 14px;
-  }
-  .panel h2 {
-    margin: 0 0 10px; font-size: 12px; text-transform: uppercase;
-    letter-spacing: 0.06em; color: var(--text-dim); font-weight: 600;
-  }
+.search {
+  position: relative;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px 7px 30px;
+  display: flex; align-items: center;
+  font-size: 13px; color: var(--text-dim);
+}
+.search::before {
+  content: ""; position: absolute; left: 10px; top: 50%;
+  width: 13px; height: 13px; transform: translateY(-50%);
+  background: currentColor;
+  -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.5" y2="16.5"/></svg>') center/contain no-repeat;
+          mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.5" y2="16.5"/></svg>') center/contain no-repeat;
+  opacity: 0.75;
+}
+.search input {
+  flex: 1; background: transparent; border: 0; outline: none;
+  color: var(--text); font: inherit;
+}
 
-  /* OLED-replica panel ------------------------------------------- */
-  .oled {
-    grid-column: 1 / -1;
-  }
-  .oled-screen {
-    background: #000; color: #b6e3ff; padding: 10px 14px; border-radius: 6px;
-    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    font-size: 13px; line-height: 1.5; white-space: pre;
-    border: 1px solid #1c2129; overflow: hidden;
-  }
-  .oled-screen .row { display: grid; grid-template-columns: 1fr 1fr; }
-  .oled-screen .row span:nth-child(2) { text-align: right; }
-  .oled-screen .row.full { grid-template-columns: 1fr; }
-  .oled-screen .dim { color: #5a87ad; }
+.nav-label {
+  padding: 0 8px; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text-dim); margin-top: 6px;
+}
+.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav a {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 8px; border-radius: 6px;
+  color: var(--text-2); text-decoration: none; font-size: 13.5px;
+}
+.nav a:hover { background: var(--chip-bg); color: var(--text); }
+.nav a.active { background: var(--chip-bg); color: var(--text); font-weight: 500; }
+.nav a svg { width: 15px; height: 15px; flex-shrink: 0; }
 
-  /* Fan bars ----------------------------------------------------- */
-  .fans { display: grid; gap: 8px; }
-  .fan-row {
-    display: grid; grid-template-columns: 36px 1fr 50px;
-    align-items: center; gap: 10px;
-  }
-  .fan-row .label { color: var(--text-dim); font-variant-numeric: tabular-nums; }
-  .fan-row .pct { text-align: right; font-variant-numeric: tabular-nums; }
-  .bar {
-    height: 10px; background: var(--panel-2); border-radius: 5px; overflow: hidden;
-  }
-  .bar > .fill {
-    height: 100%; background: var(--fan);
-    transition: width 120ms linear;
-    border-radius: 5px;
-  }
+.sidebar-footer {
+  margin-top: auto;
+  padding: 10px 8px; font-size: 11px; color: var(--text-dim);
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 6px;
+}
 
-  /* Stat cards --------------------------------------------------- */
-  dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; }
-  dt { color: var(--text-dim); }
-  dd {
-    margin: 0; text-align: right; font-variant-numeric: tabular-nums;
-    overflow-wrap: anywhere;
-  }
+/* ----- Main column ------------------------------------------------------- */
+.main {
+  display: flex; flex-direction: column;
+  min-width: 0; /* lets children shrink below content size */
+}
 
-  /* Controls ----------------------------------------------------- */
-  .controls { display: grid; gap: 14px; }
-  .control { display: grid; gap: 6px; }
-  .control header {
-    display: flex; justify-content: space-between; align-items: center;
-    margin: 0;
-  }
-  .control label { font-size: 13px; color: var(--text-dim); }
-  .control .val { font-variant-numeric: tabular-nums; font-weight: 600; }
-  input[type=range] { width: 100%; accent-color: var(--accent); }
+.topbar {
+  position: sticky; top: 0; z-index: 5;
+  background: rgba(247, 248, 250, 0.85);
+  backdrop-filter: saturate(140%) blur(8px);
+  -webkit-backdrop-filter: saturate(140%) blur(8px);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 22px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap;
+}
+@media (prefers-color-scheme: dark) {
+  .topbar { background: rgba(12, 14, 17, 0.85); }
+}
 
-  /* Toggle switch */
-  .switch {
-    position: relative; width: 38px; height: 22px; flex-shrink: 0;
-    background: var(--panel-2); border-radius: 11px;
-    cursor: pointer; transition: background 120ms ease;
-    border: 1px solid var(--border);
-  }
-  .switch::after {
-    content: ""; position: absolute; top: 2px; left: 2px;
-    width: 16px; height: 16px; border-radius: 50%;
-    background: var(--text-dim); transition: all 120ms ease;
-  }
-  .switch.on { background: var(--accent); border-color: var(--accent); }
-  .switch.on::after { left: 18px; background: white; }
+.crumb {
+  display: flex; align-items: center; gap: 8px;
+  font-weight: 600; letter-spacing: -0.01em;
+}
+.crumb .sep { color: var(--text-dim); font-weight: 400; }
+.crumb .page { color: var(--text); }
 
-  .row-flex { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  button {
-    background: var(--panel-2); color: var(--text);
-    border: 1px solid var(--border); border-radius: 6px;
-    padding: 6px 12px; font: inherit; cursor: pointer;
-  }
-  button:hover { border-color: var(--accent); }
-  button.primary { background: var(--accent); border-color: var(--accent); color: white; }
-  button.primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
+.chips {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--chip-bg); color: var(--text-2);
+  padding: 4px 9px; border-radius: 999px;
+  font-size: 12px; line-height: 1; white-space: nowrap;
+  border: 1px solid transparent;
+}
+.chip svg { width: 12px; height: 12px; }
+.chip strong { color: var(--text); font-weight: 600; }
+.chip.live { background: var(--good-bg); color: var(--good); }
+.chip.live::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--good);
+  box-shadow: 0 0 0 0 currentColor; animation: pulse 1.6s infinite;
+}
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+.chip.bad { background: var(--bad-bg); color: var(--bad); }
+@keyframes pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(34,197,94, 0.5); }
+  70%  { box-shadow: 0 0 0 6px rgba(34,197,94, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(34,197,94, 0); }
+}
 
-  .badge {
-    display: inline-block; padding: 2px 8px; border-radius: 999px;
-    font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
-    background: var(--panel-2); color: var(--text-dim);
-    border: 1px solid var(--border);
-  }
-  .badge.awake   { color: var(--good);  border-color: var(--good); }
-  .badge.sleeping{ color: var(--warn);  border-color: var(--warn); }
-  .badge.asleep  { color: var(--text-dim); }
-  .badge.waking  { color: var(--accent); border-color: var(--accent); }
-  .badge.warn    { color: var(--warn);  border-color: var(--warn); }
-  .badge.bad     { color: var(--bad);   border-color: var(--bad); }
+.actions { display: flex; align-items: center; gap: 8px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  padding: 6px 12px; font-size: 13px;
+}
+.btn:hover { background: var(--chip-bg); }
+.btn svg { width: 13px; height: 13px; }
+.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.btn.primary:hover { opacity: 0.9; }
 
-  .muted { color: var(--text-dim); }
-  .small { font-size: 12px; }
+/* ----- Content / Cards --------------------------------------------------- */
+.content {
+  padding: 18px 22px 60px; display: flex; flex-direction: column; gap: 14px;
+  max-width: 1400px; width: 100%;
+}
 
-  /* Pattern selector ------------------------------------------------ */
-  .button-group {
-    display: flex; gap: 4px; flex-wrap: wrap;
-  }
-  .button-group button {
-    flex: 1 1 0; min-width: 70px; padding: 8px 10px;
-    text-transform: capitalize;
-    transition: background 100ms ease, border-color 100ms ease;
-  }
-  .button-group button.active {
-    background: var(--accent); border-color: var(--accent); color: white;
-  }
-  .button-group button.active:hover { background: var(--accent-2); }
+.row { display: grid; gap: 14px; }
+.row.cols-2 { grid-template-columns: 1.55fr 1fr; }
+.row.cols-2-eq { grid-template-columns: 1fr 1fr; }
+@media (max-width: 1100px) {
+  .row.cols-2, .row.cols-2-eq { grid-template-columns: 1fr; }
+}
+
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px 18px;
+  box-shadow: var(--shadow-sm);
+  display: flex; flex-direction: column; gap: 12px;
+  min-width: 0;
+}
+.card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap;
+}
+.card-title {
+  display: flex; align-items: baseline; gap: 8px;
+  font-weight: 600; letter-spacing: -0.005em;
+}
+.card-title .sub { color: var(--text-dim); font-weight: 400; font-size: 12.5px; }
+.card-title .delta {
+  font-size: 12px; color: var(--good); display: inline-flex; align-items: center; gap: 3px;
+}
+.card-title .delta.down { color: var(--bad); }
+
+.tabs {
+  display: inline-flex; background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 8px; padding: 2px;
+}
+.tabs button {
+  background: transparent; border: 0;
+  padding: 5px 10px; border-radius: 6px;
+  font-size: 12.5px; color: var(--text-2);
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.tabs button:hover { color: var(--text); }
+.tabs button.active {
+  background: var(--surface); color: var(--text);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+.tabs button svg { width: 12px; height: 12px; }
+
+/* ----- Hero metric strip ------------------------------------------------- */
+.kpis {
+  display: flex; gap: 22px; flex-wrap: wrap;
+  padding: 4px 2px 0;
+}
+.kpi { display: flex; align-items: baseline; gap: 6px; }
+.kpi .k { color: var(--text-dim); font-size: 12.5px; }
+.kpi .v { font-weight: 600; font-variant-numeric: tabular-nums; }
+.kpi .d { font-size: 12px; color: var(--good); margin-left: 2px; }
+.kpi .d.down { color: var(--bad); }
+
+/* ----- Chart ------------------------------------------------------------- */
+.chart-wrap { position: relative; }
+.chart {
+  width: 100%; height: 240px; display: block;
+}
+.legend {
+  display: flex; gap: 14px; flex-wrap: wrap;
+  padding-top: 4px;
+}
+.legend .item {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12.5px; color: var(--text-2);
+}
+.legend .swatch {
+  width: 10px; height: 10px; border-radius: 2px;
+}
+.legend .v { color: var(--text); font-variant-numeric: tabular-nums; }
+
+.tooltip {
+  position: absolute; pointer-events: none;
+  background: var(--accent); color: var(--accent-fg);
+  border-radius: 8px; padding: 8px 10px; font-size: 12px;
+  min-width: 130px; box-shadow: 0 4px 18px rgba(15,23,42,.18);
+  transform: translate(-50%, -110%);
+  opacity: 0; transition: opacity 90ms ease;
+}
+.tooltip.show { opacity: 1; }
+.tooltip .row {
+  display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center;
+}
+.tooltip .row .name { display: inline-flex; align-items: center; gap: 6px; }
+.tooltip .row .swatch { width: 8px; height: 8px; border-radius: 2px; }
+.tooltip .row .val { font-variant-numeric: tabular-nums; font-weight: 600; }
+.tooltip .ts { color: rgba(255,255,255,.65); font-size: 11px; margin-bottom: 4px; }
+@media (prefers-color-scheme: dark) {
+  .tooltip .ts { color: rgba(0,0,0,.55); }
+}
+
+/* ----- Tables ------------------------------------------------------------ */
+.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tbl th, .tbl td {
+  padding: 9px 10px; text-align: left;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+.tbl th {
+  font-weight: 500; font-size: 11.5px; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.tbl tr:last-child td { border-bottom: 0; }
+.tbl tr.row-active td {
+  background: var(--surface-2);
+}
+.tbl tr.clickable { cursor: pointer; }
+.tbl tr.clickable:hover td { background: var(--surface-2); }
+.tbl td.num { text-align: right; }
+.tbl td.idx { color: var(--text-dim); width: 24px; }
+.tbl .name-cell {
+  display: flex; align-items: center; gap: 9px;
+}
+.tbl .icon-square {
+  width: 22px; height: 22px; border-radius: 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--chip-bg); color: var(--text-2);
+  font-size: 11px; font-weight: 700;
+}
+.tbl .icon-square[data-pat="wander"] { background: rgba(37,99,235,.12); color: var(--fan-1); }
+.tbl .icon-square[data-pat="sweep"]  { background: rgba(219,39,119,.12); color: var(--fan-2); }
+.tbl .icon-square[data-pat="vortex"] { background: rgba(234,88,12,.12);  color: var(--fan-4); }
+.tbl .icon-square[data-pat="breath"] { background: rgba(22,163,74,.12);  color: var(--fan-3); }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px; border-radius: 999px; font-size: 11.5px;
+  background: var(--chip-bg); color: var(--text-2);
+}
+.pill.good { background: var(--good-bg); color: var(--good); }
+.pill.warn { background: var(--warn-bg); color: var(--warn); }
+.pill.bad  { background: var(--bad-bg);  color: var(--bad); }
+.pill .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+/* ----- Sparkline cell ---------------------------------------------------- */
+.spark { width: 88px; height: 24px; display: block; }
+
+/* ----- Donut ------------------------------------------------------------- */
+.donut-wrap {
+  display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center;
+}
+.donut { width: 110px; height: 110px; }
+.donut .center {
+  font-size: 18px; font-weight: 600; fill: var(--text);
+}
+.donut .center-sub { font-size: 10px; fill: var(--text-dim); }
+.donut-legend { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+.donut-legend .item {
+  display: grid; grid-template-columns: 12px 1fr auto; gap: 8px; align-items: center;
+}
+.donut-legend .swatch { width: 10px; height: 10px; border-radius: 2px; }
+.donut-legend .v {
+  color: var(--text); font-variant-numeric: tabular-nums; font-weight: 600;
+}
+
+/* ----- Sliders / switches ------------------------------------------------ */
+.slider-row { display: grid; gap: 6px; }
+.slider-row header {
+  display: flex; justify-content: space-between; align-items: center;
+}
+.slider-row label { color: var(--text-2); font-size: 13px; }
+.slider-row .val { font-variant-numeric: tabular-nums; font-weight: 600; }
+input[type=range] {
+  width: 100%; -webkit-appearance: none; appearance: none;
+  background: transparent;
+}
+input[type=range]::-webkit-slider-runnable-track {
+  height: 4px; background: var(--border-strong); border-radius: 2px;
+}
+input[type=range]::-moz-range-track {
+  height: 4px; background: var(--border-strong); border-radius: 2px;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--surface); border: 2px solid var(--accent);
+  margin-top: -6px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+input[type=range]::-moz-range-thumb {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--surface); border: 2px solid var(--accent);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+.switch {
+  position: relative; width: 36px; height: 20px; flex-shrink: 0;
+  background: var(--border-strong); border-radius: 10px;
+  cursor: pointer; transition: background 120ms ease;
+}
+.switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: white; transition: all 120ms ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+.switch.on { background: var(--accent); }
+.switch.on::after { left: 18px; }
+
+/* ----- Manual fan grid --------------------------------------------------- */
+.fan-grid { display: grid; gap: 10px; }
+.fan-row {
+  display: grid; grid-template-columns: 28px 1fr 56px;
+  align-items: center; gap: 10px;
+}
+.fan-row .label { color: var(--text-dim); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.fan-row .pct { text-align: right; font-variant-numeric: tabular-nums; font-size: 12.5px; }
+
+/* ----- Pattern button group (used in mobile collapse / inline) ----------- */
+.button-group {
+  display: inline-flex; background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 8px; padding: 2px;
+}
+.button-group button {
+  background: transparent; border: 0; padding: 5px 10px;
+  border-radius: 6px; font-size: 12.5px; color: var(--text-2);
+  text-transform: capitalize;
+}
+.button-group button:hover { color: var(--text); }
+.button-group button.active {
+  background: var(--surface); color: var(--text);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+/* ----- OLED replica (small footer card) --------------------------------- */
+.oled-screen {
+  background: #06070a; color: #b6e3ff; padding: 10px 14px;
+  border-radius: 6px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12.5px; line-height: 1.5; white-space: pre;
+  border: 1px solid #11151c; overflow: hidden;
+}
+.oled-screen .row { display: grid; grid-template-columns: 1fr 1fr; }
+.oled-screen .row span:nth-child(2) { text-align: right; }
+.oled-screen .row.full { grid-template-columns: 1fr; }
+.oled-screen .dim { color: #5a87ad; }
+
+.muted { color: var(--text-dim); }
+.small { font-size: 12.5px; }
 </style>
 </head>
 <body>
 
-<header>
-  <div>
-    <h1>Snow Drift</h1>
-    <div class="small muted">
-      <span id="presence" class="badge">—</span>
-      <span id="mood" class="muted" style="margin-left:8px">—</span>
-      <span id="pattern-pill" class="badge" style="margin-left:8px">—</span>
+<div class="app">
+
+  <!-- ============ Sidebar ================================================ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <span>Snow Drift</span>
     </div>
-  </div>
-  <div class="row-flex">
-    <span class="conn"><span class="dot" id="conn-dot"></span><span id="conn-label">connecting…</span></span>
-    <span class="uptime" id="uptime">—</span>
-  </div>
-</header>
 
-<section class="panel oled">
-  <h2>Live OLED</h2>
-  <div class="oled-screen" id="oled">
-    <div class="row"><span>Snow Drift</span><span id="o-uptime" class="dim">--:--:--</span></div>
-    <div class="row"><span>F1: <span id="o-f1">--%</span></span><span>F3: <span id="o-f3">--%</span></span></div>
-    <div class="row"><span>F2: <span id="o-f2">--%</span></span><span>F4: <span id="o-f4">--%</span></span></div>
-    <div class="row full dim"><span><span id="o-sensors">T:--F H:--% Lx:--</span></span></div>
-    <div class="row full"><span><span id="o-state">State: -- Mood: --</span></span></div>
-  </div>
-</section>
+    <div class="search" role="search">
+      <input id="quick-actions" placeholder="Quick actions…" aria-label="Quick actions" />
+    </div>
 
-<div class="grid">
+    <div class="nav-label">Pages</div>
+    <nav class="nav" aria-label="Sections">
+      <a href="#overview" class="active" data-section="overview">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        Overview
+      </a>
+      <a href="#patterns" data-section="patterns">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12c2-4 5-4 7 0s5 4 7 0 5-4 4-3"/></svg>
+        Patterns
+      </a>
+      <a href="#sensors" data-section="sensors">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3"/><path d="M12 18v3"/><path d="M3 12h3"/><path d="M18 12h3"/><circle cx="12" cy="12" r="4"/></svg>
+        Sensors
+      </a>
+      <a href="#system" data-section="system">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/><path d="M12 16v4"/></svg>
+        System
+      </a>
+      <a href="#tuning" data-section="tuning">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="12" r="2"/><circle cx="6" cy="18" r="2"/><path d="M8 6h12"/><path d="M4 12h12"/><path d="M8 18h12"/></svg>
+        Tuning
+      </a>
+    </nav>
 
-  <section class="panel">
-    <h2>Fans</h2>
-    <div class="fans" id="fans"></div>
-  </section>
+    <div class="sidebar-footer">
+      <span>Snow Drift</span>
+      <span class="muted">v0.1</span>
+    </div>
+  </aside>
 
-  <section class="panel">
-    <h2>Sensors</h2>
-    <dl>
-      <dt>Motion</dt>             <dd id="s-motion">—</dd>
-      <dt>Temperature</dt>        <dd id="s-temp">—</dd>
-      <dt>Humidity</dt>           <dd id="s-humidity">—</dd>
-      <dt>Light</dt>              <dd id="s-lux">—</dd>
-      <dt>Visibility factor</dt>  <dd id="s-vis">—</dd>
-      <dt>Mood (intensity)</dt>   <dd id="s-int">—</dd>
-      <dt>Mood (chaos)</dt>       <dd id="s-chaos">—</dd>
-    </dl>
-  </section>
+  <!-- ============ Main =================================================== -->
+  <div class="main">
 
-  <section class="panel">
-    <h2>Raspberry Pi</h2>
-    <dl>
-      <dt>CPU temp</dt>           <dd id="p-cputemp">—</dd>
-      <dt>Load avg</dt>           <dd id="p-load">—</dd>
-      <dt>Memory</dt>             <dd id="p-mem">—</dd>
-      <dt>Disk /</dt>             <dd id="p-disk">—</dd>
-      <dt>System uptime</dt>      <dd id="p-uptime">—</dd>
-      <dt>Throttle</dt>           <dd id="p-throttle">—</dd>
-      <dt>Loop age</dt>           <dd id="p-loop">—</dd>
-    </dl>
-  </section>
-
-  <section class="panel" style="grid-column: 1 / -1">
-    <h2>Controls</h2>
-    <div class="controls">
-
-      <div class="control">
-        <header>
-          <label for="c-intensity">Master intensity</label>
-          <span class="val" id="c-intensity-val">—</span>
-        </header>
-        <input id="c-intensity" type="range" min="0" max="2" step="0.05" value="1" />
-        <div class="small muted">Multiplies the algorithm's commanded base intensity. 1.0 = unchanged.</div>
+    <!-- ====== Top bar -->
+    <div class="topbar">
+      <div class="crumb">
+        <span class="muted">Snow Drift</span>
+        <span class="sep">/</span>
+        <span class="page">Overview</span>
       </div>
-
-      <div class="control">
-        <header>
-          <label>Force awake</label>
-          <div class="switch" id="c-force-awake" role="switch" aria-checked="false" tabindex="0"></div>
-        </header>
-        <div class="small muted">Pin presence to AWAKE so the piece doesn't sleep during a viewing.</div>
+      <div class="chips" id="state-chips">
+        <span class="chip" id="chip-presence">presence —</span>
+        <span class="chip" id="chip-mood">mood —</span>
+        <span class="chip" id="chip-pattern">pattern —</span>
+        <span class="chip" id="chip-uptime">uptime —</span>
       </div>
-
-      <div class="control">
-        <header>
-          <label>Choreography pattern</label>
-          <span class="small muted" id="c-pattern-status">—</span>
-        </header>
-        <div class="button-group" id="c-pattern-buttons">
-          <button data-pattern="">Auto</button>
-          <button data-pattern="wander">Wander</button>
-          <button data-pattern="sweep">Sweep</button>
-          <button data-pattern="vortex">Vortex</button>
-          <button data-pattern="breath">Breath</button>
-        </div>
-        <div class="small muted">
-          Auto: mood engine picks based on temperature × humidity. Otherwise the
-          piece holds the chosen pattern. Transitions cross-fade over ~1.5s.
-        </div>
+      <div class="actions">
+        <span class="chip live" id="chip-conn">connecting…</span>
+        <button class="btn" id="btn-refresh" title="Refresh now">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          Refresh
+        </button>
       </div>
+    </div>
 
-      <div class="control">
-        <header>
-          <label>Manual fan override</label>
-          <div class="row-flex">
-            <span class="small muted" id="c-manual-status">auto</span>
-            <button id="c-manual-clear">Release to auto</button>
+    <!-- ====== Content -->
+    <div class="content">
+
+      <!-- ===== Overview hero + chart ===== -->
+      <section id="overview" class="card">
+        <div class="card-header">
+          <div class="card-title">
+            Overview
+            <span class="sub" id="hero-sub">Live • mood-driven choreography</span>
           </div>
-        </header>
-        <div class="fans" id="c-fans"></div>
-        <div class="small muted">Drag any slider to take control. Hit "Release to auto" to hand back to the algorithm.</div>
-      </div>
+          <div class="tabs" id="series-tabs" role="tablist">
+            <button class="active" data-series="fans" role="tab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2a4 4 0 0 1 4 4 7 7 0 0 1-4 6"/><path d="M22 12a4 4 0 0 1-4 4 7 7 0 0 1-6-4"/><path d="M12 22a4 4 0 0 1-4-4 7 7 0 0 1 4-6"/><path d="M2 12a4 4 0 0 1 4-4 7 7 0 0 1 6 4"/></svg>
+              Fans
+            </button>
+            <button data-series="sensors" role="tab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M3 12h3"/><path d="M18 12h3"/><path d="M12 3v3"/><path d="M12 18v3"/></svg>
+              Sensors
+            </button>
+            <button data-series="system" role="tab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="11" rx="2"/><path d="M8 20h8"/><path d="M12 16v4"/></svg>
+              System
+            </button>
+          </div>
+        </div>
+
+        <div class="kpis" id="kpis">
+          <div class="kpi"><span class="k">Avg fan</span><span class="v" id="kpi-avg">—</span></div>
+          <div class="kpi"><span class="k">Pattern</span><span class="v" id="kpi-pattern">—</span></div>
+          <div class="kpi"><span class="k">Intensity</span><span class="v" id="kpi-intensity">—</span></div>
+          <div class="kpi"><span class="k">Visibility</span><span class="v" id="kpi-visibility">—</span></div>
+          <div class="kpi"><span class="k">Loop</span><span class="v" id="kpi-loop">—</span></div>
+        </div>
+
+        <div class="chart-wrap">
+          <svg class="chart" id="chart" viewBox="0 0 800 240" preserveAspectRatio="none" aria-label="Live chart"></svg>
+          <div class="tooltip" id="chart-tooltip" role="status" aria-live="polite"></div>
+        </div>
+
+        <div class="legend" id="legend"></div>
+      </section>
+
+      <!-- ===== Pattern leaderboard + Sensors ===== -->
+      <section id="patterns" class="row cols-2">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              Choreography
+              <span class="sub" id="pattern-sub">— • cross-fades 1.5 s</span>
+            </div>
+            <button class="btn" id="btn-auto-pattern">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 17-4"/><path d="M21 12a9 9 0 0 1-17 4"/><polyline points="20 4 20 8 16 8"/><polyline points="4 20 4 16 8 16"/></svg>
+              Auto
+            </button>
+          </div>
+          <table class="tbl" id="pattern-table" aria-label="Choreography patterns">
+            <thead>
+              <tr>
+                <th class="idx"></th>
+                <th>Pattern</th>
+                <th>Status</th>
+                <th class="num">Energy</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <div class="small muted">
+            Mood selects automatically from temperature × humidity. Click a row to lock.
+          </div>
+        </div>
+
+        <div class="card" id="sensors">
+          <div class="card-header">
+            <div class="card-title">Sensors</div>
+            <span class="small muted" id="env-age">—</span>
+          </div>
+          <table class="tbl" id="sensors-table" aria-label="Sensor readings">
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>60 s</th>
+                <th class="num">Reading</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ===== System + OLED ===== -->
+      <section id="system" class="row cols-2-eq">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Raspberry Pi</div>
+            <span class="small muted" id="sys-uptime">—</span>
+          </div>
+          <div class="donut-wrap">
+            <svg class="donut" id="donut" viewBox="0 0 120 120" aria-label="Resource usage">
+              <circle cx="60" cy="60" r="46" fill="none" stroke="var(--border)" stroke-width="14"/>
+              <circle cx="60" cy="60" r="46" fill="none" id="donut-arc"
+                      stroke="var(--fan-1)" stroke-width="14"
+                      stroke-linecap="butt" pathLength="100"
+                      stroke-dasharray="0 100" transform="rotate(-90 60 60)"/>
+              <text class="center" x="60" y="60" text-anchor="middle" dominant-baseline="central" id="donut-center">—</text>
+              <text class="center-sub" x="60" y="76" text-anchor="middle" dominant-baseline="central">CPU</text>
+            </svg>
+            <div class="donut-legend">
+              <div class="item"><span class="swatch" style="background:var(--fan-1)"></span><span>CPU temp</span><span class="v" id="dl-cputemp">—</span></div>
+              <div class="item"><span class="swatch" style="background:var(--fan-3)"></span><span>Memory</span><span class="v" id="dl-mem">—</span></div>
+              <div class="item"><span class="swatch" style="background:var(--fan-4)"></span><span>Disk</span><span class="v" id="dl-disk">—</span></div>
+              <div class="item"><span class="swatch" style="background:var(--fan-2)"></span><span>Load 1m</span><span class="v" id="dl-load">—</span></div>
+              <div class="item"><span class="swatch" style="background:var(--text-dim)"></span><span>Throttle</span><span class="v" id="dl-throttle">—</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Live OLED</div>
+            <span class="small muted">128 × 64 replica</span>
+          </div>
+          <div class="oled-screen" id="oled">
+            <div class="row"><span>Snow Drift</span><span id="o-uptime" class="dim">--:--:--</span></div>
+            <div class="row"><span>F1: <span id="o-f1">--%</span></span><span>F3: <span id="o-f3">--%</span></span></div>
+            <div class="row"><span>F2: <span id="o-f2">--%</span></span><span>F4: <span id="o-f4">--%</span></span></div>
+            <div class="row full dim"><span><span id="o-sensors">T:--F H:--% Lx:--</span></span></div>
+            <div class="row full"><span><span id="o-state">State: -- Mood: --</span></span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== Tuning ===== -->
+      <section id="tuning" class="card">
+        <div class="card-header">
+          <div class="card-title">
+            Tuning
+            <span class="sub">live values, no restart needed</span>
+          </div>
+          <button class="btn" id="btn-release-manual">Release manual</button>
+        </div>
+
+        <div class="row cols-2-eq">
+          <div style="display:flex; flex-direction:column; gap:14px;">
+            <div class="slider-row">
+              <header>
+                <label for="c-intensity">Master intensity</label>
+                <span class="val" id="c-intensity-val">—</span>
+              </header>
+              <input id="c-intensity" type="range" min="0" max="2" step="0.05" value="1" />
+              <div class="small muted">Multiplies the algorithm's commanded base intensity. 1.0 = unchanged.</div>
+            </div>
+            <div class="slider-row">
+              <header>
+                <label>Force awake</label>
+                <div class="switch" id="c-force-awake" role="switch" aria-checked="false" tabindex="0"></div>
+              </header>
+              <div class="small muted">Pin presence to AWAKE so the piece doesn't sleep during a viewing.</div>
+            </div>
+          </div>
+
+          <div>
+            <div class="slider-row" style="margin-bottom:10px">
+              <header>
+                <label>Manual fan override</label>
+                <span class="small muted" id="c-manual-status">auto</span>
+              </header>
+            </div>
+            <div class="fan-grid" id="c-fans"></div>
+            <div class="small muted" style="margin-top:8px">
+              Drag any slider to take control. Click "Release manual" to hand back to the algorithm.
+            </div>
+          </div>
+        </div>
+      </section>
 
     </div>
-  </section>
-
+  </div>
 </div>
 
 <script>
 "use strict";
 
-// ---------------- helpers ----------------
-const $ = (id) => document.getElementById(id);
+/* ============================================================================
+ * State + helpers
+ * ============================================================================ */
 const NUM_FANS = 4;
-const fmtPct = (v) => v == null ? "—" : `${Math.round(v * 100)}%`;
-const fmtPctOf100 = (v) => v == null ? "—" : `${Math.round(v)}%`;
-const fmtNum = (v, d = 1) => v == null ? "—" : Number(v).toFixed(d);
-const fmtBytes = (b) => {
-  if (b == null) return "—";
-  const u = ["B", "KB", "MB", "GB", "TB"]; let i = 0;
-  while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
-  return `${b.toFixed(b < 10 ? 1 : 0)} ${u[i]}`;
+const FAN_COLORS = [
+  "var(--fan-1)", "var(--fan-2)", "var(--fan-3)", "var(--fan-4)"
+];
+const PATTERNS = ["wander", "sweep", "vortex", "breath"];
+const PATTERN_LABELS = {
+  wander: "wander", sweep: "sweep", vortex: "vortex", breath: "breath",
 };
+const PATTERN_DESC = {
+  wander: "independent Perlin per fan",
+  sweep:  "phased noise, wave moves left → right",
+  vortex: "one fan high, three low, rotating",
+  breath: "all four in sync, slow swell",
+};
+
+const $ = (id) => document.getElementById(id);
+
+const fmtPct = (v) => v == null ? "—" : `${Math.round(v * 100)}%`;
+const fmtPct100 = (v) => v == null ? "—" : `${Math.round(v)}%`;
+const fmtNum = (v, d = 1) => v == null ? "—" : Number(v).toFixed(d);
 const fmtUptime = (s) => {
   if (s == null) return "—";
   s = Math.max(0, Math.floor(s));
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
   return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
 };
-const cToF = (c) => c == null ? null : c * 9 / 5 + 32;
+const fmtBytes = (b) => {
+  if (b == null) return "—";
+  const u = ["B", "KB", "MB", "GB", "TB"]; let i = 0;
+  while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+  return `${b.toFixed(b < 10 ? 1 : 0)} ${u[i]}`;
+};
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -329,18 +771,498 @@ async function api(path, opts = {}) {
   return res.json();
 }
 
-// ---------------- fan rows (live) ----------------
-const fansEl = $("fans");
-for (let i = 0; i < NUM_FANS; i++) {
-  fansEl.insertAdjacentHTML("beforeend", `
-    <div class="fan-row">
-      <span class="label">F${i + 1}</span>
-      <div class="bar"><div class="fill" id="fan-fill-${i}" style="width:0%"></div></div>
-      <span class="pct" id="fan-pct-${i}">—</span>
-    </div>`);
+/* ============================================================================
+ * Rolling history — every poll appends one sample. Keeps WINDOW_S seconds.
+ * ============================================================================ */
+const WINDOW_S = 60;
+const POLL_MS = 500;
+const MAX_SAMPLES = Math.ceil((WINDOW_S * 1000) / POLL_MS) + 1;
+/** @type {{ t: number, fans: number[], temp: number|null, humidity: number|null, lux: number|null, cpu: number|null, mem: number|null }[]} */
+const history = [];
+
+function pushHistory(state) {
+  const fans = state.fan_speeds || [0, 0, 0, 0];
+  const env = state.env || {};
+  const sys = state.system || {};
+  history.push({
+    t: performance.now() / 1000,
+    fans: [fans[0]||0, fans[1]||0, fans[2]||0, fans[3]||0],
+    temp: env.temperature_f ?? null,
+    humidity: env.humidity ?? null,
+    lux: env.lux ?? null,
+    cpu: sys.cpu_temp_c ?? null,
+    mem: sys.mem_pct ?? null,
+  });
+  while (history.length > MAX_SAMPLES) history.shift();
 }
 
-// ---------------- manual fan sliders ----------------
+/* ============================================================================
+ * Chart rendering — pure SVG, no library
+ * Series mode: "fans" | "sensors" | "system"
+ * ============================================================================ */
+let activeSeries = "fans";
+
+function seriesConfig() {
+  switch (activeSeries) {
+    case "sensors":
+      return {
+        title: "ambient",
+        // Y axes: temp 50–90F, humidity 0–100%, lux 0–1500
+        lines: [
+          { name: "Temp °F",   color: "var(--fan-4)", get: (s) => s.temp,    fmt: (v) => v==null?"—":`${v.toFixed(1)} °F`, scale: (v) => v==null?null:(v - 50) / 40 },
+          { name: "Humidity",  color: "var(--fan-1)", get: (s) => s.humidity,fmt: (v) => v==null?"—":`${v.toFixed(1)} %`,  scale: (v) => v==null?null: v / 100 },
+          { name: "Lux",       color: "var(--fan-3)", get: (s) => s.lux,     fmt: (v) => v==null?"—":`${Math.round(v)} lx`,scale: (v) => v==null?null: Math.min(1, v / 1500) },
+        ],
+        yLabel: (frac) => "",  // mixed units, no single axis label
+      };
+    case "system":
+      return {
+        title: "system",
+        lines: [
+          { name: "CPU °C",   color: "var(--fan-1)", get: (s) => s.cpu, fmt: (v) => v==null?"—":`${v.toFixed(1)} °C`, scale: (v) => v==null?null: Math.min(1, v / 100) },
+          { name: "Memory",   color: "var(--fan-3)", get: (s) => s.mem, fmt: (v) => v==null?"—":`${v.toFixed(0)} %`,   scale: (v) => v==null?null: v / 100 },
+        ],
+        yLabel: (f) => `${Math.round(f * 100)}`,
+      };
+    case "fans":
+    default:
+      return {
+        title: "fans",
+        lines: [
+          { name: "Fan 1", color: "var(--fan-1)", get: (s) => s.fans[0], fmt: (v) => fmtPct(v), scale: (v) => v },
+          { name: "Fan 2", color: "var(--fan-2)", get: (s) => s.fans[1], fmt: (v) => fmtPct(v), scale: (v) => v },
+          { name: "Fan 3", color: "var(--fan-3)", get: (s) => s.fans[2], fmt: (v) => fmtPct(v), scale: (v) => v },
+          { name: "Fan 4", color: "var(--fan-4)", get: (s) => s.fans[3], fmt: (v) => fmtPct(v), scale: (v) => v },
+        ],
+        yLabel: (f) => `${Math.round(f * 100)}`,
+      };
+  }
+}
+
+const chartEl = $("chart");
+const tooltipEl = $("chart-tooltip");
+const W = 800, H = 240, padL = 36, padR = 24, padT = 14, padB = 22;
+
+function renderChart() {
+  const cfg = seriesConfig();
+  const ns = "http://www.w3.org/2000/svg";
+
+  if (history.length < 2) {
+    chartEl.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="var(--text-dim)" font-size="13">collecting…</text>`;
+    renderLegend(cfg, null);
+    return;
+  }
+
+  const tNow = history[history.length - 1].t;
+  const tMin = tNow - WINDOW_S;
+
+  const xOf = (t) => padL + ((t - tMin) / WINDOW_S) * (W - padL - padR);
+  const yOf = (frac) => padT + (1 - frac) * (H - padT - padB);
+
+  let svg = "";
+
+  // Grid lines
+  for (let g = 0; g <= 4; g++) {
+    const f = g / 4;
+    const y = yOf(f);
+    svg += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="var(--border)" stroke-width="1"/>`;
+    if (cfg.yLabel) {
+      svg += `<text x="${padL - 6}" y="${y + 3}" text-anchor="end" fill="var(--text-dim)" font-size="10">${cfg.yLabel(f)}</text>`;
+    }
+  }
+
+  // X-axis labels (-60s, -30s, now)
+  const xTicks = [
+    { t: tMin,           label: "-60s" },
+    { t: tMin + 30,      label: "-30s" },
+    { t: tNow,           label: "now"  },
+  ];
+  xTicks.forEach((tick) => {
+    const x = xOf(tick.t);
+    svg += `<text x="${x}" y="${H - 6}" text-anchor="middle" fill="var(--text-dim)" font-size="10">${tick.label}</text>`;
+  });
+
+  // Lines
+  cfg.lines.forEach((line, idx) => {
+    let d = "";
+    let started = false;
+    history.forEach((s) => {
+      if (s.t < tMin) return;
+      const v = line.scale(line.get(s));
+      if (v == null || isNaN(v)) { started = false; return; }
+      const cx = xOf(s.t);
+      const cy = yOf(Math.max(0, Math.min(1, v)));
+      d += (started ? " L " : "M ") + cx.toFixed(1) + " " + cy.toFixed(1);
+      started = true;
+    });
+    if (d) {
+      svg += `<path d="${d}" fill="none" stroke="${line.color}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>`;
+    }
+
+    // End-point marker for the latest sample
+    const last = history[history.length - 1];
+    const v = line.scale(line.get(last));
+    if (v != null && !isNaN(v)) {
+      const cx = xOf(last.t);
+      const cy = yOf(Math.max(0, Math.min(1, v)));
+      svg += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="2.6" fill="${line.color}"/>`;
+    }
+  });
+
+  chartEl.innerHTML = svg;
+  renderLegend(cfg, history[history.length - 1]);
+}
+
+function renderLegend(cfg, latestSample) {
+  const el = $("legend");
+  el.innerHTML = cfg.lines.map((l) => {
+    const v = latestSample ? l.fmt(l.get(latestSample)) : "—";
+    return `<span class="item"><span class="swatch" style="background:${l.color}"></span>${l.name} <span class="v">${v}</span></span>`;
+  }).join("");
+}
+
+/* ----- Chart hover tooltip -------------------------------------------------- */
+chartEl.addEventListener("mousemove", (e) => {
+  if (history.length < 2) { tooltipEl.classList.remove("show"); return; }
+  const rect = chartEl.getBoundingClientRect();
+  const xPx = e.clientX - rect.left;
+  // Convert pixel x to SVG x using current width.
+  const svgX = (xPx / rect.width) * W;
+  const tNow = history[history.length - 1].t;
+  const tMin = tNow - WINDOW_S;
+  if (svgX < padL || svgX > W - padR) { tooltipEl.classList.remove("show"); return; }
+  const t = tMin + ((svgX - padL) / (W - padL - padR)) * WINDOW_S;
+  // Find closest sample
+  let best = history[0], bd = Infinity;
+  for (const s of history) {
+    const d = Math.abs(s.t - t);
+    if (d < bd) { bd = d; best = s; }
+  }
+  const cfg = seriesConfig();
+  const dt = (tNow - best.t).toFixed(1);
+  let html = `<div class="ts">${dt}s ago</div>`;
+  cfg.lines.forEach((l) => {
+    const v = l.fmt(l.get(best));
+    html += `<div class="row"><span class="name"><span class="swatch" style="background:${l.color}"></span>${l.name}</span><span class="val">${v}</span></div>`;
+  });
+  tooltipEl.innerHTML = html;
+  tooltipEl.style.left = xPx + "px";
+  // Position tooltip above the line at top of chart area for simplicity.
+  tooltipEl.style.top = (rect.height * 0.05) + "px";
+  tooltipEl.classList.add("show");
+});
+chartEl.addEventListener("mouseleave", () => tooltipEl.classList.remove("show"));
+
+/* ----- Series tabs --------------------------------------------------------- */
+document.querySelectorAll("#series-tabs button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("#series-tabs button").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    activeSeries = btn.dataset.series;
+    renderChart();
+  });
+});
+
+/* ============================================================================
+ * Pattern leaderboard
+ * ============================================================================ */
+const patternTbody = $("pattern-table").querySelector("tbody");
+
+function renderPatternTable(state) {
+  const settings = state.settings || {};
+  const pattern = state.pattern || {};
+  const forced = settings.forced_pattern || pattern.forced || null;
+  const active = pattern.active;
+  const moodPick = pattern.mood_selected;
+
+  // Compute current per-pattern energy (fan average) only for the active row.
+  const fans = state.fan_speeds || [0,0,0,0];
+  const avg = fans.reduce((a,b) => a + b, 0) / NUM_FANS;
+
+  patternTbody.innerHTML = PATTERNS.map((p, i) => {
+    const isActive = p === active;
+    const isForced = p === forced;
+    const isMood = !forced && p === moodPick;
+    let status = `<span class="pill"><span class="dot"></span>idle</span>`;
+    if (isForced && isActive) status = `<span class="pill warn"><span class="dot"></span>forced</span>`;
+    else if (isForced && !isActive) status = `<span class="pill warn"><span class="dot"></span>forced • fading</span>`;
+    else if (isMood && isActive) status = `<span class="pill good"><span class="dot"></span>mood pick</span>`;
+    else if (isMood && !isActive) status = `<span class="pill good"><span class="dot"></span>mood pick • fading</span>`;
+    else if (isActive) status = `<span class="pill"><span class="dot"></span>active</span>`;
+
+    const energy = isActive ? `${Math.round(avg * 100)}%` : "—";
+    return `<tr class="clickable ${isActive ? "row-active" : ""}" data-pattern="${p}">
+      <td class="idx">${i + 1}</td>
+      <td>
+        <div class="name-cell">
+          <span class="icon-square" data-pat="${p}">${p[0].toUpperCase()}</span>
+          <div>
+            <div>${PATTERN_LABELS[p]}</div>
+            <div class="small muted">${PATTERN_DESC[p]}</div>
+          </div>
+        </div>
+      </td>
+      <td>${status}</td>
+      <td class="num">${energy}</td>
+    </tr>`;
+  }).join("");
+
+  patternTbody.querySelectorAll("tr.clickable").forEach((tr) => {
+    tr.addEventListener("click", async () => {
+      const p = tr.dataset.pattern;
+      try {
+        await api("/api/control/pattern", { method: "POST", body: JSON.stringify({ pattern: p }) });
+      } catch (err) { console.error(err); }
+    });
+  });
+
+  $("pattern-sub").textContent = forced
+    ? `forced: ${forced}` + (pattern.transitioning ? " • fading" : "")
+    : `mood → ${moodPick || "?"}` + (pattern.transitioning ? " • fading" : "");
+}
+
+$("btn-auto-pattern").addEventListener("click", async () => {
+  try { await api("/api/control/pattern", { method: "POST", body: JSON.stringify({ pattern: null }) }); }
+  catch (err) { console.error(err); }
+});
+
+/* ============================================================================
+ * Sensors table with sparklines
+ * ============================================================================ */
+const sensorsTbody = $("sensors-table").querySelector("tbody");
+
+function buildSparkline(getter, color) {
+  if (history.length < 2) return `<span class="muted small">—</span>`;
+  let min = Infinity, max = -Infinity, samples = 0;
+  history.forEach((s) => {
+    const v = getter(s);
+    if (v == null || isNaN(v)) return;
+    samples += 1;
+    if (v < min) min = v;
+    if (v > max) max = v;
+  });
+  if (samples < 2 || !isFinite(min) || !isFinite(max)) {
+    return `<span class="muted small">—</span>`;
+  }
+  const flat = max - min < 1e-9;
+  if (flat) max = min + 1;
+  const w = 88, h = 24, mid = h / 2;
+  let d = "";
+  let started = false;
+  history.forEach((s, idx) => {
+    const v = getter(s);
+    if (v == null || isNaN(v)) { started = false; return; }
+    const x = (idx / (history.length - 1)) * w;
+    const y = flat ? mid : h - ((v - min) / (max - min)) * h;
+    d += (started ? " L " : "M ") + x.toFixed(1) + " " + y.toFixed(1);
+    started = true;
+  });
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <path d="${d}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+  </svg>`;
+}
+
+function renderSensorsTable(state) {
+  const env = state.env || {};
+  const mood = state.mood || {};
+
+  const motionLabel = state.motion ? "triggered" : "quiet";
+  const humidityTag = env.humidity == null
+    ? null : (env.humidity > 65 ? "humid" : env.humidity < 25 ? "dry" : "comfy");
+  const luxTag = env.lux == null
+    ? null : (env.lux < 50 ? "dim" : env.lux < 400 ? "cozy" : "bright");
+
+  const rows = [
+    {
+      name: "Motion", icon: "M",
+      sub: motionLabel, spark: "",
+      value: state.motion
+        ? `<span class="pill warn"><span class="dot"></span>active</span>`
+        : `<span class="muted">quiet</span>`,
+    },
+    {
+      name: "Temperature", icon: "T",
+      sub: env.temperature_c != null ? `${env.temperature_c.toFixed(1)} °C` : "",
+      spark: buildSparkline((s) => s.temp, "var(--fan-4)"),
+      value: env.temperature_f != null ? `${env.temperature_f.toFixed(1)} °F` : "—",
+    },
+    {
+      name: "Humidity", icon: "H",
+      sub: humidityTag || "",
+      spark: buildSparkline((s) => s.humidity, "var(--fan-1)"),
+      value: env.humidity != null ? `${env.humidity.toFixed(1)} %` : "—",
+    },
+    {
+      name: "Light", icon: "L",
+      sub: luxTag || "",
+      spark: buildSparkline((s) => s.lux, "var(--fan-3)"),
+      value: env.lux != null ? `${env.lux.toFixed(0)} lx` : "—",
+    },
+    {
+      name: "Visibility", icon: "V",
+      sub: mood.label || "",
+      spark: "",
+      value: mood.visibility_factor != null
+        ? `${mood.visibility_factor.toFixed(2)}×` : "—",
+    },
+  ];
+
+  sensorsTbody.innerHTML = rows.map((r) => `
+    <tr>
+      <td>
+        <div class="name-cell">
+          <span class="icon-square">${r.icon}</span>
+          <div>
+            <div>${r.name}</div>
+            ${r.sub ? `<div class="small muted">${r.sub}</div>` : ""}
+          </div>
+        </div>
+      </td>
+      <td>${r.spark}</td>
+      <td class="num">${r.value}</td>
+    </tr>`).join("");
+
+  $("env-age").textContent = (state._age_s != null && isFinite(state._age_s))
+    ? `loop tick ${(state._age_s * 1000).toFixed(0)} ms ago` : "";
+}
+
+/* ============================================================================
+ * System donut (CPU temp as primary big value)
+ * ============================================================================ */
+function renderSystem(state) {
+  const sys = state.system || {};
+  const arc = $("donut-arc");
+  const center = $("donut-center");
+
+  // Big number: CPU temp as percentage of 100°C threshold.
+  const cput = sys.cpu_temp_c;
+  const cpuPct = cput == null ? null : Math.max(0, Math.min(100, cput));
+  if (cpuPct != null) {
+    arc.setAttribute("stroke-dasharray", `${cpuPct.toFixed(1)} ${100 - cpuPct.toFixed(1)}`);
+    arc.setAttribute("stroke", cpuPct > 80 ? "var(--bad)" : cpuPct > 70 ? "var(--warn)" : "var(--fan-1)");
+    center.textContent = `${Math.round(cput)}°`;
+  } else {
+    arc.setAttribute("stroke-dasharray", `0 100`);
+    center.textContent = "—";
+  }
+
+  $("dl-cputemp").textContent = cput != null ? `${cput.toFixed(1)} °C` : "—";
+  $("dl-mem").textContent = (sys.mem_pct != null)
+    ? `${fmtBytes(sys.mem_used_bytes)} / ${fmtBytes(sys.mem_total_bytes)} (${fmtPct100(sys.mem_pct)})`
+    : "—";
+  $("dl-disk").textContent = (sys.disk_pct != null)
+    ? `${fmtBytes(sys.disk_used_bytes)} / ${fmtBytes(sys.disk_total_bytes)} (${fmtPct100(sys.disk_pct)})`
+    : "—";
+  $("dl-load").textContent = sys.load_1m != null
+    ? `${sys.load_1m.toFixed(2)} / ${sys.load_5m?.toFixed?.(2) ?? "—"} / ${sys.load_15m?.toFixed?.(2) ?? "—"}`
+    : "—";
+
+  const thr = sys.throttle || {};
+  if (thr.value == null) {
+    $("dl-throttle").innerHTML = `<span class="muted">—</span>`;
+  } else if (!thr.value) {
+    $("dl-throttle").innerHTML = `<span class="pill good"><span class="dot"></span>clean</span>`;
+  } else {
+    const cls = thr.throttled_now ? "bad" : "warn";
+    $("dl-throttle").innerHTML = `<span class="pill ${cls}">${(thr.flags || []).join(", ") || thr.raw}</span>`;
+  }
+
+  $("sys-uptime").textContent = sys.system_uptime_seconds != null
+    ? `up ${fmtUptime(sys.system_uptime_seconds)}` : "";
+}
+
+/* ============================================================================
+ * OLED replica
+ * ============================================================================ */
+function renderOled(state) {
+  const fans = state.fan_speeds || [0,0,0,0];
+  const env = state.env || {};
+  $("o-uptime").textContent = fmtUptime(state.uptime_seconds);
+  $("o-f1").textContent = fmtPct(fans[0]);
+  $("o-f2").textContent = fmtPct(fans[1]);
+  $("o-f3").textContent = fmtPct(fans[2]);
+  $("o-f4").textContent = fmtPct(fans[3]);
+  const tF = (env.temperature_f != null) ? Math.round(env.temperature_f) : "--";
+  const rh = (env.humidity != null) ? Math.round(env.humidity) : "--";
+  const lx = (env.lux != null) ? Math.round(env.lux) : "--";
+  $("o-sensors").textContent = `T:${tF}F H:${rh}% Lx:${lx}`;
+  $("o-state").textContent = `State: ${state.presence_state || "?"}  Mood: ${state.mood?.label || "?"}`;
+}
+
+/* ============================================================================
+ * Top-bar chips
+ * ============================================================================ */
+function chipClass(presence) {
+  switch ((presence || "").toUpperCase()) {
+    case "AWAKE": return "good";
+    case "WAKING": return "warn";
+    case "SLEEPING": return "warn";
+    case "ASLEEP": return "";
+    default: return "";
+  }
+}
+function renderChips(state) {
+  const presence = state.presence_state || "—";
+  const mood = state.mood || {};
+  const pat = state.pattern || {};
+  $("chip-presence").innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>presence <strong>${presence}</strong>`;
+  $("chip-presence").className = `chip ${chipClass(presence)}`;
+  $("chip-mood").innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12c2-4 5-4 7 0s5 4 7 0 5-4 4-3"/></svg>mood <strong>${mood.label || "—"}</strong>`;
+  $("chip-pattern").innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="12" r="2"/><circle cx="6" cy="18" r="2"/></svg>pattern <strong>${pat.active || "—"}${pat.transitioning ? " →" : ""}</strong>`;
+  $("chip-uptime").innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>uptime <strong>${fmtUptime(state.uptime_seconds)}</strong>`;
+}
+
+/* ============================================================================
+ * KPI strip
+ * ============================================================================ */
+function renderKpis(state) {
+  const fans = state.fan_speeds || [0,0,0,0];
+  const avg = fans.reduce((a,b) => a + b, 0) / NUM_FANS;
+  const settings = state.settings || {};
+  const pattern = state.pattern || {};
+  const mood = state.mood || {};
+
+  $("kpi-avg").textContent = fmtPct(avg);
+  $("kpi-pattern").textContent = pattern.active || "—";
+  $("kpi-intensity").textContent = settings.intensity_multiplier != null
+    ? `${Number(settings.intensity_multiplier).toFixed(2)}×` : "—";
+  $("kpi-visibility").textContent = mood.visibility_factor != null
+    ? `${mood.visibility_factor.toFixed(2)}×` : "—";
+  const age = state._age_s;
+  $("kpi-loop").textContent = (age != null && isFinite(age))
+    ? `${(age * 1000).toFixed(0)} ms` : "—";
+}
+
+/* ============================================================================
+ * Tuning controls
+ * ============================================================================ */
+const intensityEl = $("c-intensity");
+let userTouchingIntensity = false;
+intensityEl.addEventListener("input", () => {
+  $("c-intensity-val").textContent = `${Number(intensityEl.value).toFixed(2)}×`;
+  userTouchingIntensity = true;
+});
+intensityEl.addEventListener("change", async () => {
+  await api("/api/control/intensity", {
+    method: "POST", body: JSON.stringify({ multiplier: parseFloat(intensityEl.value) }),
+  });
+  setTimeout(() => { userTouchingIntensity = false; }, 1500);
+});
+
+const forceAwakeEl = $("c-force-awake");
+async function toggleForceAwake() {
+  const next = !forceAwakeEl.classList.contains("on");
+  forceAwakeEl.classList.toggle("on", next);
+  forceAwakeEl.setAttribute("aria-checked", String(next));
+  await api("/api/control/force-awake", {
+    method: "POST", body: JSON.stringify({ enabled: next }),
+  });
+}
+forceAwakeEl.addEventListener("click", toggleForceAwake);
+forceAwakeEl.addEventListener("keydown", (e) => {
+  if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggleForceAwake(); }
+});
+
 const manualEl = $("c-fans");
 const manualSliders = [];
 let userTouchingManual = false;
@@ -362,166 +1284,18 @@ for (let i = 0; i < NUM_FANS; i++) {
     try {
       await api("/api/control/fans", { method: "POST", body: JSON.stringify({ speeds }) });
     } finally {
-      // Allow auto-sync to resume after a beat.
       setTimeout(() => { userTouchingManual = false; }, 1500);
     }
   });
 }
-
-$("c-manual-clear").addEventListener("click", async () => {
+$("btn-release-manual").addEventListener("click", async () => {
   await api("/api/control/fans", { method: "POST", body: JSON.stringify({ speeds: null }) });
   userTouchingManual = false;
 });
 
-// ---------------- intensity slider ----------------
-const intensityEl = $("c-intensity");
-let userTouchingIntensity = false;
-intensityEl.addEventListener("input", () => {
-  $("c-intensity-val").textContent = `${Number(intensityEl.value).toFixed(2)}×`;
-  userTouchingIntensity = true;
-});
-intensityEl.addEventListener("change", async () => {
-  await api("/api/control/intensity", {
-    method: "POST",
-    body: JSON.stringify({ multiplier: parseFloat(intensityEl.value) }),
-  });
-  setTimeout(() => { userTouchingIntensity = false; }, 1500);
-});
-
-// ---------------- pattern button group ----------------
-const patternButtons = Array.from(
-  document.querySelectorAll("#c-pattern-buttons button")
-);
-patternButtons.forEach((btn) => {
-  btn.addEventListener("click", async () => {
-    const pattern = btn.dataset.pattern || null;
-    try {
-      await api("/api/control/pattern", {
-        method: "POST",
-        body: JSON.stringify({ pattern }),
-      });
-    } catch (err) {
-      console.error("pattern set failed", err);
-    }
-  });
-});
-
-// ---------------- force-awake switch ----------------
-const forceAwakeEl = $("c-force-awake");
-async function toggleForceAwake() {
-  const next = !forceAwakeEl.classList.contains("on");
-  forceAwakeEl.classList.toggle("on", next);
-  forceAwakeEl.setAttribute("aria-checked", String(next));
-  await api("/api/control/force-awake", {
-    method: "POST", body: JSON.stringify({ enabled: next }),
-  });
-}
-forceAwakeEl.addEventListener("click", toggleForceAwake);
-forceAwakeEl.addEventListener("keydown", (e) => {
-  if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggleForceAwake(); }
-});
-
-// ---------------- live render ----------------
-function setBadge(el, label, klass) {
-  el.textContent = label;
-  el.className = "badge " + (klass || "");
-}
-
-function render(state) {
-  if (!state) return;
-  const fans = state.fan_speeds || [0, 0, 0, 0];
+function applyTuningFromState(state) {
   const settings = state.settings || {};
-  const sys = state.system || {};
-  const env = state.env || {};
-  const mood = state.mood || {};
-  const pattern = state.pattern || {};
-
-  // OLED replica
-  $("o-uptime").textContent = fmtUptime(state.uptime_seconds);
-  $("o-f1").textContent = fmtPct(fans[0]);
-  $("o-f2").textContent = fmtPct(fans[1]);
-  $("o-f3").textContent = fmtPct(fans[2]);
-  $("o-f4").textContent = fmtPct(fans[3]);
-  const tF = (env.temperature_f != null) ? Math.round(env.temperature_f) : "--";
-  const rh = (env.humidity != null) ? Math.round(env.humidity) : "--";
-  const lx = (env.lux != null) ? Math.round(env.lux) : "--";
-  $("o-sensors").textContent = `T:${tF}F H:${rh}% Lx:${lx}`;
-  $("o-state").textContent = `State: ${state.presence_state || "?"}  Mood: ${mood.label || "?"}`;
-
-  // Header
-  $("uptime").textContent = fmtUptime(state.uptime_seconds);
-  const ps = (state.presence_state || "—").toLowerCase();
-  setBadge($("presence"), state.presence_state || "—", ps);
-  $("mood").textContent = mood.label || "—";
-
-  // Pattern indicator (header pill + button group + status line)
-  const activePattern = pattern.active || "—";
-  const forcedPattern = settings.forced_pattern || pattern.forced || null;
-  const moodPattern = pattern.mood_selected || "—";
-  const transitioning = !!pattern.transitioning;
-  const pillEl = $("pattern-pill");
-  pillEl.textContent = transitioning ? `${activePattern} →` : activePattern;
-  pillEl.className = "badge" + (forcedPattern ? " warn" : "");
-  patternButtons.forEach((btn) => {
-    const isAuto = !btn.dataset.pattern;
-    const matches = forcedPattern
-      ? btn.dataset.pattern === forcedPattern
-      : isAuto;
-    btn.classList.toggle("active", matches);
-  });
-  $("c-pattern-status").textContent = forcedPattern
-    ? `forced: ${forcedPattern}` + (transitioning ? "  (fading…)" : "")
-    : `auto → ${moodPattern}` + (transitioning ? "  (fading…)" : "");
-
-  // Fan bars
-  for (let i = 0; i < NUM_FANS; i++) {
-    const v = fans[i] || 0;
-    $(`fan-fill-${i}`).style.width = `${(v * 100).toFixed(1)}%`;
-    $(`fan-pct-${i}`).textContent = fmtPct(v);
-  }
-
-  // Sensors
-  $("s-motion").textContent = state.motion ? "TRIGGERED" : "quiet";
-  $("s-temp").textContent = env.temperature_f != null
-    ? `${env.temperature_f.toFixed(1)} °F (${env.temperature_c?.toFixed?.(1) ?? "—"} °C)`
-    : "—";
-  $("s-humidity").textContent = env.humidity != null ? `${env.humidity.toFixed(1)} %` : "—";
-  $("s-lux").textContent = env.lux != null ? `${env.lux.toFixed(1)} lx` : "—";
-  $("s-vis").textContent = fmtNum(mood.visibility_factor, 2);
-  $("s-int").textContent = fmtNum(mood.base_intensity, 3);
-  $("s-chaos").textContent = fmtNum(mood.gust_rate, 3);
-
-  // System
-  $("p-cputemp").innerHTML = sys.cpu_temp_c == null ? "—"
-    : `${sys.cpu_temp_c.toFixed(1)} °C` +
-      (sys.cpu_temp_c > 80 ? ' <span class="badge bad">hot</span>' :
-       sys.cpu_temp_c > 70 ? ' <span class="badge warn">warm</span>' : '');
-  $("p-load").textContent = sys.load_1m == null ? "—"
-    : `${sys.load_1m.toFixed(2)} / ${sys.load_5m?.toFixed?.(2)} / ${sys.load_15m?.toFixed?.(2)}`;
-  $("p-mem").textContent = sys.mem_total_bytes == null ? "—"
-    : `${fmtBytes(sys.mem_used_bytes)} / ${fmtBytes(sys.mem_total_bytes)} (${fmtPctOf100(sys.mem_pct)})`;
-  $("p-disk").textContent = sys.disk_total_bytes == null ? "—"
-    : `${fmtBytes(sys.disk_used_bytes)} / ${fmtBytes(sys.disk_total_bytes)} (${fmtPctOf100(sys.disk_pct)})`;
-  $("p-uptime").textContent = fmtUptime(sys.system_uptime_seconds);
-  const thr = sys.throttle || {};
-  if (!thr.value && thr.value !== 0) {
-    $("p-throttle").textContent = "—";
-  } else if (!thr.value) {
-    $("p-throttle").innerHTML = `<span class="badge" style="color:var(--good);border-color:var(--good)">clean</span>`;
-  } else {
-    const cls = thr.throttled_now ? "bad" : "warn";
-    $("p-throttle").innerHTML = `<span class="badge ${cls}">${thr.flags.join(", ") || thr.raw}</span>`;
-  }
-  const age = state._age_s;
-  if (age == null || !isFinite(age)) {
-    $("p-loop").textContent = "—";
-  } else {
-    const cls = age > 2 ? "bad" : age > 0.5 ? "warn" : "";
-    $("p-loop").innerHTML = `${(age * 1000).toFixed(0)} ms` +
-      (cls ? ` <span class="badge ${cls}">stalled?</span>` : "");
-  }
-
-  // Controls (don't fight the user mid-drag)
+  const fans = state.fan_speeds || [0, 0, 0, 0];
   if (!userTouchingIntensity && settings.intensity_multiplier != null) {
     intensityEl.value = settings.intensity_multiplier;
     $("c-intensity-val").textContent = `${Number(settings.intensity_multiplier).toFixed(2)}×`;
@@ -531,7 +1305,7 @@ function render(state) {
   if (!userTouchingManual) {
     const m = settings.manual_fan_speeds;
     if (m) {
-      $("c-manual-status").textContent = "manual override active";
+      $("c-manual-status").textContent = "manual override";
       manualSliders.forEach((sl, i) => {
         sl.value = m[i] ?? 0;
         $(`m-fan-val-${i}`).textContent = fmtPct(m[i] ?? 0);
@@ -546,24 +1320,50 @@ function render(state) {
   }
 }
 
-// ---------------- polling ----------------
+/* ============================================================================
+ * Sidebar nav scroll-spy
+ * ============================================================================ */
+document.querySelectorAll(".nav a[data-section]").forEach((a) => {
+  a.addEventListener("click", (e) => {
+    document.querySelectorAll(".nav a").forEach((b) => b.classList.remove("active"));
+    a.classList.add("active");
+  });
+});
+
+/* ============================================================================
+ * Polling loop
+ * ============================================================================ */
 let pollTimer = null;
+let connOk = false;
 async function pollOnce() {
   try {
     const state = await api("/api/state");
-    $("conn-dot").className = "dot ok";
-    $("conn-label").textContent = "live";
-    render(state);
+    if (!connOk) {
+      $("chip-conn").className = "chip live";
+      $("chip-conn").textContent = "live";
+      connOk = true;
+    }
+    pushHistory(state);
+    renderChips(state);
+    renderKpis(state);
+    renderChart();
+    renderPatternTable(state);
+    renderSensorsTable(state);
+    renderSystem(state);
+    renderOled(state);
+    applyTuningFromState(state);
   } catch (err) {
-    $("conn-dot").className = "dot bad";
-    $("conn-label").textContent = "disconnected";
+    if (connOk) {
+      $("chip-conn").className = "chip bad";
+      $("chip-conn").textContent = "disconnected";
+      connOk = false;
+    }
   } finally {
-    pollTimer = setTimeout(pollOnce, 500);
+    pollTimer = setTimeout(pollOnce, POLL_MS);
   }
 }
 pollOnce();
 
-// Pause polling when the tab is hidden to save Pi cycles.
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     if (pollTimer) clearTimeout(pollTimer);
@@ -571,6 +1371,11 @@ document.addEventListener("visibilitychange", () => {
   } else if (!pollTimer) {
     pollOnce();
   }
+});
+
+$("btn-refresh").addEventListener("click", () => {
+  if (pollTimer) clearTimeout(pollTimer);
+  pollOnce();
 });
 </script>
 </body>
