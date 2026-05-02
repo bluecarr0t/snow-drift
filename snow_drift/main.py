@@ -14,6 +14,7 @@ clean shutdown that turns every fan off and clears the OLED.
 from __future__ import annotations
 
 import logging
+import os
 import signal
 import sys
 import time
@@ -33,9 +34,10 @@ from snow_drift.web import SharedState, WebServer
 from snow_drift.wind_algorithm import WindAlgorithm
 
 # Web UI configuration. Bind to all interfaces by default so the piece
-# is reachable from any device on the local network.
-WEB_HOST: str = "0.0.0.0"
-WEB_PORT: int = 8080
+# is reachable from any device on the local network. Override with
+# SNOW_DRIFT_WEB_HOST / SNOW_DRIFT_WEB_PORT env vars (handy for local dev).
+WEB_HOST: str = os.environ.get("SNOW_DRIFT_WEB_HOST", "0.0.0.0")
+WEB_PORT: int = int(os.environ.get("SNOW_DRIFT_WEB_PORT", "8080"))
 
 logger = logging.getLogger("snow_drift.main")
 

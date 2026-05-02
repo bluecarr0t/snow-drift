@@ -21,6 +21,7 @@ params. Keeping eager annotations sidesteps that whole class of bug.
 """
 
 import logging
+import math
 import threading
 from pathlib import Path
 from typing import Any, List, Optional
@@ -33,6 +34,24 @@ from snow_drift.web.system_stats import read_pi_stats
 logger = logging.getLogger(__name__)
 
 _STATIC_DIR = Path(__file__).parent / "static"
+
+
+def _json_safe(obj: Any) -> Any:
+    """Recursively replace non-finite floats with ``None``.
+
+    Standard JSON has no ``inf`` / ``nan`` representation, so they raise
+    ``ValueError`` deep inside Starlette's encoder. The sensor poller
+    legitimately emits ``inf`` for "never had a successful read", and Pi
+    system stats can emit ``nan``; the front-end already renders missing
+    values as ``"—"`` so ``null`` is the right wire-format.
+    """
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(v) for v in obj]
+    return obj
 
 
 def _create_app(state: SharedState, settings: RuntimeSettings) -> Any:
@@ -88,7 +107,7 @@ def _create_app(state: SharedState, settings: RuntimeSettings) -> Any:
         snap = state.latest()
         snap["system"] = read_pi_stats()
         snap["settings"] = settings.snapshot()
-        return JSONResponse(snap)
+        return JSONResponse(_json_safe(snap))
 
     @app.get("/api/config")
     async def get_config():
