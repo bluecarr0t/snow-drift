@@ -45,14 +45,14 @@ def main() -> int:
     wind_algo = WindAlgorithm(num_fans=len(config.FAN_PINS))
 
     target_period = 1.0 / config.UPDATE_RATE_HZ
-    last_time = time.time()
+    last_time = time.monotonic()
     last_print = 0.0
     last_oled_update = 0.0
     start_time = last_time
 
     try:
         while True:
-            now = time.time()
+            now = time.monotonic()
             dt = now - last_time
             last_time = now
 
@@ -62,7 +62,10 @@ def main() -> int:
 
             mood_engine.update_presence(motion)
             mood_engine.update_environment(
-                env["temp_c"], env["humidity"], lux
+                dt,
+                temp_c=env["temp_c"] if env_sensor.available else None,
+                humidity=env["humidity"] if env_sensor.available else None,
+                lux=lux if light_sensor.available else None,
             )
             mood_params = mood_engine.get_wind_params()
             speeds = wind_algo.step(dt, mood_params)
@@ -95,7 +98,7 @@ def main() -> int:
                 print(line, flush=True)
                 last_print = now
 
-            elapsed = time.time() - now
+            elapsed = time.monotonic() - now
             time.sleep(max(0.0, target_period - elapsed))
     except KeyboardInterrupt:
         logger.info("Interrupted")

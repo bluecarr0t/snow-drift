@@ -7,19 +7,24 @@ parameters that the wind algorithm consumes.
 
 Design notes:
 
-- Environmental updates use exponential smoothing so the piece's mood
-  drifts gradually rather than snapping when a sensor reading jitters.
+- Environmental updates use exponential smoothing with a time constant
+  (:data:`config.ENV_SMOOTHING_TAU_SECONDS`) and are dt-aware, so the
+  piece's mood drifts at the same real-world rate regardless of the
+  loop's update rate.
 - The presence state machine is the source of truth for the master
   intensity multiplier; the wind algorithm itself is unaware of sleep.
 - ``get_wind_params`` is pure - it just reads current state - so it
   can be called many times per loop without side effects.
+- All elapsed-time math uses :func:`time.monotonic` so an NTP step
+  cannot cause spurious presence transitions.
 """
 
 from __future__ import annotations
 
 import logging
+import math
 import time
-from typing import Literal, TypedDict
+from typing import Literal, Optional, TypedDict
 
 from snow_drift import config
 
@@ -50,11 +55,24 @@ def _inverse_lerp(a: float, b: float, value: float) -> float:
     return max(0.0, min(1.0, t))
 
 
+def _smoothing_alpha(dt: float, tau: float) -> float:
+    """Per-step alpha for ``1 - exp(-dt / tau)`` exponential smoothing.
+
+    Returns 0 when ``dt`` is non-positive, 1 when ``tau`` is non-positive.
+    """
+    if tau <= 0:
+        return 1.0
+    if dt <= 0:
+        return 0.0
+    return 1.0 - math.exp(-dt / tau)
+
+
 class MoodEngine:
     """Sensor-driven mood + presence state machine."""
 
     def __init__(self) -> None:
-        self.last_motion_time: float = time.time()
+        now = time.monotonic()
+        self.last_motion_time: float = now
         self.wake_started_at: float | None = None
         self.sleep_started_at: float | None = None
         self.presence_state: PresenceState = "AWAKE"
@@ -79,7 +97,7 @@ class MoodEngine:
         - ``SLEEPING`` →  ``WAKING``   on motion
         - ``WAKING``   →  ``AWAKE``    after WAKE_FADE_IN_SECONDS
         """
-        now = time.time()
+        now = time.monotonic()
         if motion_detected:
             self.last_motion_time = now
 
@@ -124,33 +142,51 @@ class MoodEngine:
     # Environmental update (BME688 + BH1750)
     # ------------------------------------------------------------------
     def update_environment(
-        self, temp_c: float, humidity: float, lux: float
+        self,
+        dt: float,
+        temp_c: Optional[float] = None,
+        humidity: Optional[float] = None,
+        lux: Optional[float] = None,
     ) -> None:
         """Ease the mood baselines toward the values implied by the sensors.
 
-        ``temp_c`` controls how active the baseline drift is, ``humidity``
-        controls how often gusts trigger, and ``lux`` controls the final
-        ``visibility_factor`` so the piece is subtler in bright rooms.
+        Each input is independent: pass ``None`` for any sensor that is
+        unavailable so its corresponding baseline freezes rather than
+        drifting toward a stale cached default. Smoothing is dt-aware
+        with time constant :data:`config.ENV_SMOOTHING_TAU_SECONDS`.
+
+        Args:
+            dt: Real seconds elapsed since the last call.
+            temp_c: Latest ambient temperature in Celsius, or ``None``.
+            humidity: Latest relative humidity (%RH), or ``None``.
+            lux: Latest ambient light reading, or ``None``.
         """
-        target_intensity = _inverse_lerp(
-            config.TEMP_CALM_C, config.TEMP_ACTIVE_C, temp_c
-        )
-        target_chaos = _inverse_lerp(
-            config.HUMIDITY_LOW, config.HUMIDITY_HIGH, humidity
-        )
+        alpha = _smoothing_alpha(dt, config.ENV_SMOOTHING_TAU_SECONDS)
 
-        alpha = config.ENV_SMOOTHING_ALPHA
-        self.baseline_intensity = _lerp(
-            self.baseline_intensity, target_intensity, alpha
-        )
-        self.baseline_chaos = _lerp(
-            self.baseline_chaos, target_chaos, alpha
-        )
+        if temp_c is not None:
+            target_intensity = _inverse_lerp(
+                config.TEMP_CALM_C, config.TEMP_ACTIVE_C, temp_c
+            )
+            self.baseline_intensity = _lerp(
+                self.baseline_intensity, target_intensity, alpha
+            )
 
-        # Visibility: bright rooms → 0.5x (subtle), dim rooms → 1.5x (dramatic).
-        # Note LUX_DIM < LUX_BRIGHT so we invert the mapping here.
-        bright_t = _inverse_lerp(config.LUX_DIM, config.LUX_BRIGHT, lux)
-        self.visibility_factor = _lerp(1.5, 0.5, bright_t)
+        if humidity is not None:
+            target_chaos = _inverse_lerp(
+                config.HUMIDITY_LOW, config.HUMIDITY_HIGH, humidity
+            )
+            self.baseline_chaos = _lerp(
+                self.baseline_chaos, target_chaos, alpha
+            )
+
+        if lux is not None:
+            # Bright rooms → 0.5x (subtle), dim rooms → 1.5x (dramatic).
+            # Note LUX_DIM < LUX_BRIGHT so we invert the mapping here.
+            bright_t = _inverse_lerp(config.LUX_DIM, config.LUX_BRIGHT, lux)
+            target_visibility = _lerp(1.5, 0.5, bright_t)
+            self.visibility_factor = _lerp(
+                self.visibility_factor, target_visibility, alpha
+            )
 
         self._mood_label = self._compute_mood_label()
 
@@ -204,7 +240,7 @@ class MoodEngine:
 
     def _compute_presence_multiplier(self) -> float:
         """Return the master intensity gain implied by the presence state."""
-        now = time.time()
+        now = time.monotonic()
         state = self.presence_state
 
         if state == "AWAKE":

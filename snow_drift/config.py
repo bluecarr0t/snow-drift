@@ -53,8 +53,11 @@ HUMIDITY_HIGH: Final[float] = 70.0  # ≥ this → chaotic gusts
 LUX_BRIGHT: Final[float] = 500.0    # bright daylight → subtler movement
 LUX_DIM: Final[float] = 10.0        # near darkness → dramatic movement
 
-# Smoothing factor for environment-driven baselines (0-1, smaller = slower).
-ENV_SMOOTHING_ALPHA: Final[float] = 0.05
+# Time constant (seconds) for environment-driven baseline smoothing.
+# We compute a per-step alpha as ``1 - exp(-dt / tau)`` so smoothing
+# behaves the same regardless of loop rate. ~63% of the way to a new
+# target after ``ENV_SMOOTHING_TAU_SECONDS``, ~95% after 3*tau.
+ENV_SMOOTHING_TAU_SECONDS: Final[float] = 5.0
 
 # ---------------------------------------------------------------------------
 # Wind algorithm
@@ -72,6 +75,11 @@ STILLNESS_DURATION_SECONDS: Final[float] = 4.0
 # Lower bound on fan output once they are spinning. Tiny 4010 fans
 # need a minimum duty cycle to overcome stiction.
 MIN_RUNNING_DUTY: Final[float] = 0.18
+
+# Periodically re-base the wind algorithm's internal time accumulator
+# so single-precision-ish drift can't degrade Perlin lattice resolution
+# over very long uninterrupted runs. ~11 days at 1.0 lattice spacing.
+WIND_TIME_WRAP_SECONDS: Final[float] = 1_000_000.0
 
 # ---------------------------------------------------------------------------
 # Sensor read intervals

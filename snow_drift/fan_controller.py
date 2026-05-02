@@ -32,13 +32,19 @@ class FanController:
         self._available = False
 
         try:
-            from gpiozero import PWMOutputDevice
+            from gpiozero import Device, PWMOutputDevice
 
             for idx, pin in enumerate(self.pins):
                 device = PWMOutputDevice(
                     pin, frequency=pwm_frequency, initial_value=0.0
                 )
                 self._devices[idx] = device
+                if idx == 0:
+                    # Log the resolved pin factory once. On Pi 5 we want
+                    # ``LGPIOFactory``; a software/mock factory means
+                    # PWM_FREQUENCY won't be respected by the hardware.
+                    factory = type(Device.pin_factory).__name__ if Device.pin_factory else "?"
+                    logger.info("gpiozero pin factory: %s", factory)
                 logger.info(
                     "Fan %d initialised on GPIO %d @ %d Hz",
                     idx + 1,

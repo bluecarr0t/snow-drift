@@ -58,8 +58,12 @@ class WindAlgorithm:
         """
         if self.time >= self.gust_active_until and self.time >= self.stillness_until:
             gust_rate = float(mood_params.get("gust_rate", 0.5))
+            # Symmetric scaling: humid/chaotic moods bias toward gusts in
+            # the same proportion that calm/dry moods bias toward
+            # stillness. Both factors land in [0.5, 1.5] so the total
+            # rate of "something is happening" stays roughly constant.
             gust_p = config.GUST_PROBABILITY * dt * (0.5 + gust_rate)
-            still_p = config.STILLNESS_PROBABILITY * dt
+            still_p = config.STILLNESS_PROBABILITY * dt * (1.5 - gust_rate)
 
             if self._rng.random() < gust_p:
                 self.gust_active_until = self.time + config.GUST_DURATION_SECONDS
@@ -116,6 +120,16 @@ class WindAlgorithm:
         if dt < 0:
             dt = 0.0
         self.time += dt
+
+        # Re-base internal time to keep the float magnitude bounded so
+        # Perlin lattice resolution stays clean over very long runs.
+        # Subtracting the same amount from every event deadline keeps
+        # the algorithm's behaviour completely unchanged.
+        if self.time > config.WIND_TIME_WRAP_SECONDS:
+            self.time -= config.WIND_TIME_WRAP_SECONDS
+            self.gust_active_until -= config.WIND_TIME_WRAP_SECONDS
+            self.stillness_until -= config.WIND_TIME_WRAP_SECONDS
+            logger.debug("Wind time wrapped (t=%.2f)", self.time)
 
         self._maybe_trigger_event(dt, mood_params)
 

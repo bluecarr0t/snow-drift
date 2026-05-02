@@ -32,10 +32,6 @@ from snow_drift.wind_algorithm import WindAlgorithm
 logger = logging.getLogger("snow_drift.main")
 
 
-class _ShutdownRequested(Exception):
-    """Raised internally when SIGINT/SIGTERM has been received."""
-
-
 def _install_signal_handlers() -> dict[str, bool]:
     """Install handlers that flip a shared flag on SIGINT / SIGTERM."""
     flag = {"stop": False}
@@ -58,7 +54,7 @@ def main() -> int:
     logger.info("Snow Drift starting")
 
     stop_flag = _install_signal_handlers()
-    start_time = time.time()
+    start_monotonic = time.monotonic()
 
     fan_controller: Optional[FanController] = None
     oled: Optional[StatusDisplay] = None
@@ -73,7 +69,7 @@ def main() -> int:
         mood_engine = MoodEngine()
         wind_algo = WindAlgorithm(num_fans=len(config.FAN_PINS))
 
-        last_time = time.time()
+        last_time = time.monotonic()
         last_oled_update = 0.0
         target_period = 1.0 / config.UPDATE_RATE_HZ
 
@@ -82,7 +78,7 @@ def main() -> int:
         )
 
         while not stop_flag["stop"]:
-            now = time.time()
+            now = time.monotonic()
             dt = now - last_time
             last_time = now
 
@@ -91,8 +87,14 @@ def main() -> int:
             lux = light_sensor.read()
 
             mood_engine.update_presence(motion)
+            # Pass ``None`` for sensors that failed to initialise so the
+            # corresponding mood baseline freezes instead of drifting
+            # toward our cached safe-defaults.
             mood_engine.update_environment(
-                env["temp_c"], env["humidity"], lux
+                dt,
+                temp_c=env["temp_c"] if env_sensor.available else None,
+                humidity=env["humidity"] if env_sensor.available else None,
+                lux=lux if light_sensor.available else None,
             )
 
             mood_params = mood_engine.get_wind_params()
@@ -108,12 +110,12 @@ def main() -> int:
                         "lux": lux,
                         "presence_state": mood_engine.presence_state,
                         "mood_label": mood_params["mood_label"],
-                        "uptime_seconds": now - start_time,
+                        "uptime_seconds": now - start_monotonic,
                     }
                 )
                 last_oled_update = now
 
-            elapsed = time.time() - now
+            elapsed = time.monotonic() - now
             time.sleep(max(0.0, target_period - elapsed))
 
         return 0
