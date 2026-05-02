@@ -8,5 +8,12 @@ so the main loop continues running.
 from snow_drift.sensors.environment import EnvironmentSensor
 from snow_drift.sensors.light import LightSensor
 from snow_drift.sensors.pir import PIRSensor
+from snow_drift.sensors.poller import SensorPoller, SensorSnapshot
 
-__all__ = ["EnvironmentSensor", "LightSensor", "PIRSensor"]
+__all__ = [
+    "EnvironmentSensor",
+    "LightSensor",
+    "PIRSensor",
+    "SensorPoller",
+    "SensorSnapshot",
+]

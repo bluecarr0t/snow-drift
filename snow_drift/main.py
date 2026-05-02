@@ -27,6 +27,7 @@ from snow_drift.oled_display import StatusDisplay
 from snow_drift.sensors.environment import EnvironmentSensor
 from snow_drift.sensors.light import LightSensor
 from snow_drift.sensors.pir import PIRSensor
+from snow_drift.sensors.poller import SensorPoller
 from snow_drift.wind_algorithm import WindAlgorithm
 
 logger = logging.getLogger("snow_drift.main")
@@ -59,6 +60,7 @@ def main() -> int:
     fan_controller: Optional[FanController] = None
     oled: Optional[StatusDisplay] = None
     pir: Optional[PIRSensor] = None
+    poller: Optional[SensorPoller] = None
 
     try:
         fan_controller = FanController()
@@ -68,6 +70,12 @@ def main() -> int:
         light_sensor = LightSensor()
         mood_engine = MoodEngine()
         wind_algo = WindAlgorithm(num_fans=len(config.FAN_PINS))
+
+        # All I²C / GPIO reads happen on a background thread so a slow
+        # sensor (especially the BME688's gas reading) cannot stall the
+        # 25 Hz fan update loop.
+        poller = SensorPoller(pir, env_sensor, light_sensor)
+        poller.start()
 
         last_time = time.monotonic()
         last_oled_update = 0.0
@@ -82,19 +90,14 @@ def main() -> int:
             dt = now - last_time
             last_time = now
 
-            motion = pir.is_motion_detected()
-            env = env_sensor.read()
-            lux = light_sensor.read()
+            snap = poller.latest()
 
-            mood_engine.update_presence(motion)
-            # Pass ``None`` for sensors that failed to initialise so the
-            # corresponding mood baseline freezes instead of drifting
-            # toward our cached safe-defaults.
+            mood_engine.update_presence(snap.motion)
             mood_engine.update_environment(
                 dt,
-                temp_c=env["temp_c"] if env_sensor.available else None,
-                humidity=env["humidity"] if env_sensor.available else None,
-                lux=lux if light_sensor.available else None,
+                temp_c=snap.env["temp_c"] if snap.env_available else None,
+                humidity=snap.env["humidity"] if snap.env_available else None,
+                lux=snap.lux if snap.light_available else None,
             )
 
             mood_params = mood_engine.get_wind_params()
@@ -102,12 +105,15 @@ def main() -> int:
             fan_controller.set_all(fan_speeds)
 
             if now - last_oled_update > 1.0 / config.OLED_UPDATE_HZ:
+                # Convert cached temp_c → °F locally; we no longer call
+                # env_sensor.temperature_f() from this thread.
+                temp_f = snap.env["temp_c"] * 9.0 / 5.0 + 32.0
                 oled.render(
                     {
                         "fan_speeds": fan_speeds,
-                        "temperature_f": env_sensor.temperature_f(),
-                        "humidity": env["humidity"],
-                        "lux": lux,
+                        "temperature_f": temp_f,
+                        "humidity": snap.env["humidity"],
+                        "lux": snap.lux,
                         "presence_state": mood_engine.presence_state,
                         "mood_label": mood_params["mood_label"],
                         "uptime_seconds": now - start_monotonic,
@@ -123,6 +129,13 @@ def main() -> int:
         logger.exception("Fatal error in main loop")
         return 1
     finally:
+        # Stop the poller before tearing down its underlying sensors so
+        # the worker thread doesn't see a half-closed device.
+        if poller is not None:
+            try:
+                poller.stop()
+            except Exception:
+                logger.exception("sensor poller stop failed")
         if fan_controller is not None:
             try:
                 fan_controller.cleanup()

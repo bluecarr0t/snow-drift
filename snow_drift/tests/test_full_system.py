@@ -22,6 +22,7 @@ from snow_drift.oled_display import StatusDisplay
 from snow_drift.sensors.environment import EnvironmentSensor
 from snow_drift.sensors.light import LightSensor
 from snow_drift.sensors.pir import PIRSensor
+from snow_drift.sensors.poller import SensorPoller
 from snow_drift.wind_algorithm import WindAlgorithm
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,8 @@ def main() -> int:
     oled = StatusDisplay()
     mood_engine = MoodEngine()
     wind_algo = WindAlgorithm(num_fans=len(config.FAN_PINS))
+    poller = SensorPoller(pir, env_sensor, light_sensor)
+    poller.start()
 
     target_period = 1.0 / config.UPDATE_RATE_HZ
     last_time = time.monotonic()
@@ -56,27 +59,26 @@ def main() -> int:
             dt = now - last_time
             last_time = now
 
-            motion = pir.is_motion_detected()
-            env = env_sensor.read()
-            lux = light_sensor.read()
+            snap = poller.latest()
 
-            mood_engine.update_presence(motion)
+            mood_engine.update_presence(snap.motion)
             mood_engine.update_environment(
                 dt,
-                temp_c=env["temp_c"] if env_sensor.available else None,
-                humidity=env["humidity"] if env_sensor.available else None,
-                lux=lux if light_sensor.available else None,
+                temp_c=snap.env["temp_c"] if snap.env_available else None,
+                humidity=snap.env["humidity"] if snap.env_available else None,
+                lux=snap.lux if snap.light_available else None,
             )
             mood_params = mood_engine.get_wind_params()
             speeds = wind_algo.step(dt, mood_params)
 
             if now - last_oled_update > 1.0 / config.OLED_UPDATE_HZ:
+                temp_f = snap.env["temp_c"] * 9.0 / 5.0 + 32.0
                 oled.render(
                     {
                         "fan_speeds": speeds,
-                        "temperature_f": env_sensor.temperature_f(),
-                        "humidity": env["humidity"],
-                        "lux": lux,
+                        "temperature_f": temp_f,
+                        "humidity": snap.env["humidity"],
+                        "lux": snap.lux,
                         "presence_state": mood_engine.presence_state,
                         "mood_label": mood_params["mood_label"],
                         "uptime_seconds": now - start_time,
@@ -104,6 +106,7 @@ def main() -> int:
         logger.info("Interrupted")
         return 0
     finally:
+        poller.stop()
         oled.clear()
         pir.cleanup()
 
