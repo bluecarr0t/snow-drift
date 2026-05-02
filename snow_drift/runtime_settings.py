@@ -18,6 +18,8 @@ import logging
 import threading
 from typing import List, Optional, TypedDict
 
+from snow_drift import config
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,6 +29,7 @@ class RuntimeSettingsSnapshot(TypedDict):
     intensity_multiplier: float
     force_awake: bool
     manual_fan_speeds: Optional[List[float]]
+    forced_pattern: Optional[str]
 
 
 class RuntimeSettings:
@@ -40,6 +43,7 @@ class RuntimeSettings:
         self._intensity_multiplier: float = 1.0
         self._force_awake: bool = False
         self._manual_fan_speeds: Optional[List[float]] = None
+        self._forced_pattern: Optional[str] = None
 
     # ------------------------------------------------------------------
     # Snapshot / diff
@@ -55,6 +59,7 @@ class RuntimeSettings:
                     if self._manual_fan_speeds is not None
                     else None
                 ),
+                "forced_pattern": self._forced_pattern,
             }
 
     # ------------------------------------------------------------------
@@ -120,3 +125,32 @@ class RuntimeSettings:
             self._manual_fan_speeds = clamped
             logger.info("runtime: manual fan override = %s", clamped)
         return list(clamped)
+
+    # ------------------------------------------------------------------
+    # Forced pattern (locks the choreography pattern regardless of mood)
+    # ------------------------------------------------------------------
+    def get_forced_pattern(self) -> Optional[str]:
+        with self._lock:
+            return self._forced_pattern
+
+    def set_forced_pattern(self, pattern: Optional[str]) -> Optional[str]:
+        """Pin the pattern to a specific name, or pass ``None`` for auto.
+
+        Raises :class:`ValueError` if ``pattern`` isn't one of
+        :data:`config.PATTERNS`.
+        """
+        if pattern is None:
+            with self._lock:
+                if self._forced_pattern is not None:
+                    logger.info("runtime: forced_pattern cleared (auto)")
+                self._forced_pattern = None
+            return None
+        if pattern not in config.PATTERNS:
+            raise ValueError(
+                f"unknown pattern {pattern!r}; expected one of {list(config.PATTERNS)}"
+            )
+        with self._lock:
+            if self._forced_pattern != pattern:
+                logger.info("runtime: forced_pattern → %s", pattern)
+            self._forced_pattern = pattern
+        return pattern

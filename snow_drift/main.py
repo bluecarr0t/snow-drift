@@ -126,6 +126,13 @@ def main() -> int:
             mood_params = dict(mood_params)
             mood_params["base_intensity"] *= intensity
 
+            # Apply forced-pattern override (if any). The wind algorithm
+            # cross-fades over PATTERN_FADE_SECONDS, so flipping this on
+            # the web UI doesn't snap the piece between styles.
+            forced_pattern = settings.get_forced_pattern()
+            if forced_pattern is not None:
+                mood_params["pattern"] = forced_pattern
+
             algo_speeds = wind_algo.step(dt, mood_params)
 
             # Manual override from the web UI takes precedence when set.
@@ -169,6 +176,16 @@ def main() -> int:
                         "visibility_factor": mood_params["visibility_factor"],
                         "baseline_intensity": mood_engine.baseline_intensity,
                         "baseline_chaos": mood_engine.baseline_chaos,
+                    },
+                    "pattern": {
+                        # The pattern actually driving the fans right now
+                        # (after cross-fade settles this equals the requested).
+                        "active": wind_algo.current_pattern,
+                        # What the mood engine would pick if not overridden.
+                        "mood_selected": mood_engine.current_pattern,
+                        # The runtime override (None means auto).
+                        "forced": forced_pattern,
+                        "transitioning": wind_algo.transitioning,
                     },
                 }
             )

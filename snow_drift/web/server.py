@@ -25,6 +25,7 @@ import threading
 from pathlib import Path
 from typing import Any, List, Optional
 
+from snow_drift import config
 from snow_drift.runtime_settings import RuntimeSettings
 from snow_drift.web.shared_state import SharedState
 from snow_drift.web.system_stats import read_pi_stats
@@ -52,6 +53,10 @@ def _create_app(state: SharedState, settings: RuntimeSettings) -> Any:
     class ForceAwakeRequest(BaseModel):
         enabled: bool
 
+    class PatternRequest(BaseModel):
+        # ``None`` (or omitted) = release the override and let mood pick.
+        pattern: Optional[str] = None
+
     class ConfigUpdateRequest(BaseModel):
         intensity_multiplier: Optional[float] = Field(
             default=None,
@@ -64,6 +69,8 @@ def _create_app(state: SharedState, settings: RuntimeSettings) -> Any:
         # manual_fan_speeds is ambiguous (untouched vs. clear), so we
         # use a separate flag.
         clear_manual_fan_speeds: bool = False
+        forced_pattern: Optional[str] = None
+        clear_forced_pattern: bool = False
 
     app = FastAPI(title="Snow Drift", docs_url="/api/docs", redoc_url=None)
 
@@ -89,6 +96,8 @@ def _create_app(state: SharedState, settings: RuntimeSettings) -> Any:
 
     @app.post("/api/config")
     async def update_config(body: ConfigUpdateRequest):
+        from fastapi import HTTPException
+
         if body.intensity_multiplier is not None:
             settings.set_intensity_multiplier(body.intensity_multiplier)
         if body.force_awake is not None:
@@ -97,6 +106,13 @@ def _create_app(state: SharedState, settings: RuntimeSettings) -> Any:
             settings.set_manual_fan_speeds(None)
         elif body.manual_fan_speeds is not None:
             settings.set_manual_fan_speeds(body.manual_fan_speeds)
+        if body.clear_forced_pattern:
+            settings.set_forced_pattern(None)
+        elif body.forced_pattern is not None:
+            try:
+                settings.set_forced_pattern(body.forced_pattern)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
         return JSONResponse(settings.snapshot())
 
     @app.post("/api/control/fans")
@@ -113,6 +129,18 @@ def _create_app(state: SharedState, settings: RuntimeSettings) -> Any:
     async def control_force_awake(body: ForceAwakeRequest):
         result = settings.set_force_awake(body.enabled)
         return JSONResponse({"force_awake": result})
+
+    @app.post("/api/control/pattern")
+    async def control_pattern(body: PatternRequest):
+        from fastapi import HTTPException
+
+        try:
+            result = settings.set_forced_pattern(body.pattern)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(
+            {"forced_pattern": result, "available": list(config.PATTERNS)}
+        )
 
     @app.get("/api/health")
     async def health():

@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 PresenceState = Literal["AWAKE", "SLEEPING", "ASLEEP", "WAKING"]
+Pattern = Literal["wander", "sweep", "vortex", "breath"]
 
 
 class WindParams(TypedDict):
@@ -41,6 +42,7 @@ class WindParams(TypedDict):
     gust_rate: float
     visibility_factor: float
     mood_label: str
+    pattern: Pattern
 
 
 def _lerp(a: float, b: float, t: float) -> float:
@@ -82,6 +84,9 @@ class MoodEngine:
         self.visibility_factor: float = 1.0
 
         self._mood_label: str = "Calm"
+        # Initial pattern matches the original behaviour. The selector
+        # may swap this each tick based on baselines + hysteresis.
+        self.current_pattern: Pattern = "wander"
 
     # ------------------------------------------------------------------
     # Presence (PIR) state machine
@@ -208,6 +213,44 @@ class MoodEngine:
             )
 
         self._mood_label = self._compute_mood_label()
+        self.current_pattern = self._select_pattern()
+
+    def _select_pattern(self) -> Pattern:
+        """Pick a choreography pattern from the (intensity × chaos) plane.
+
+        Quadrants::
+
+                          chaos low (smooth)   chaos high (chaotic)
+            intensity hi   sweep                vortex
+            intensity lo   breath               wander
+
+        Each axis uses a 0.1-wide hysteresis deadband around 0.5, with
+        the threshold direction chosen by the *current* pattern - so a
+        baseline that wobbles around 0.5 cannot cause pattern flapping.
+        """
+        # Treat each axis as boolean "high or not", with the threshold
+        # pulled toward whichever side the current pattern lives on.
+        currently_intense = self.current_pattern in ("sweep", "vortex")
+        intensity_high = (
+            self.baseline_intensity > config.PATTERN_INTENSITY_LOW
+            if currently_intense
+            else self.baseline_intensity > config.PATTERN_INTENSITY_HIGH
+        )
+
+        currently_chaotic = self.current_pattern in ("wander", "vortex")
+        chaos_high = (
+            self.baseline_chaos > config.PATTERN_CHAOS_LOW
+            if currently_chaotic
+            else self.baseline_chaos > config.PATTERN_CHAOS_HIGH
+        )
+
+        if intensity_high and chaos_high:
+            return "vortex"
+        if intensity_high and not chaos_high:
+            return "sweep"
+        if not intensity_high and chaos_high:
+            return "wander"
+        return "breath"
 
     def _compute_mood_label(self) -> str:
         """Pick a short human-readable label describing the current mood."""
@@ -255,6 +298,7 @@ class MoodEngine:
             gust_rate=gust_rate,
             visibility_factor=self.visibility_factor,
             mood_label=mood_label,
+            pattern=self.current_pattern,
         )
 
     def _compute_presence_multiplier(self) -> float:

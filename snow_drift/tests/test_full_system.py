@@ -88,9 +88,13 @@ def main() -> int:
 
             # Throttle console output to ~2 Hz so it's readable.
             if now - last_print > 0.5:
+                pat = wind_algo.current_pattern
+                if wind_algo.transitioning:
+                    pat = f"{pat}*"
                 line = (
                     f"{mood_engine.presence_state:8} "
-                    f"{mood_params['mood_label']:18} "
+                    f"{mood_params['mood_label']:14} "
+                    f"pat={pat:7} "
                     f"int={mood_params['base_intensity']:.2f} "
                     f"gust={mood_params['gust_rate']:.2f} "
                     f"vis={mood_params['visibility_factor']:.2f}  "

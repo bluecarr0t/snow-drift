@@ -109,6 +109,42 @@ python snow_drift/main.py
 `Ctrl+C` shuts everything down cleanly: fans go to 0%, OLED clears,
 GPIO is released.
 
+## Choreography patterns
+
+`wind_algorithm.py` produces per-fan baselines via one of four named
+patterns. The mood engine picks the pattern from the current
+`(intensity × chaos)` plane, and the algorithm cross-fades between
+patterns over `PATTERN_FADE_SECONDS` (1.5 s by default).
+
+|                       | low chaos (smooth)         | high chaos (chaotic)         |
+| --------------------- | -------------------------- | ---------------------------- |
+| **high intensity**    | `sweep` — traveling wave   | `vortex` — rotating peak     |
+| **low intensity**     | `breath` — synced swell    | `wander` — independent noise |
+
+- **`wander`** — the original look. Independent Perlin noise per fan;
+  feels organic and restless.
+- **`sweep`** — a single noise stream sampled with per-fan time delay,
+  producing a wave that travels fan 0 → fan N at `1 / SWEEP_LAG_SECONDS`
+  fans per second.
+- **`vortex`** — narrow cosine peak rotates around the array
+  (`VORTEX_PERIOD_SECONDS` per full revolution); one fan dominant at a
+  time, others held at `VORTEX_PEAK_BASELINE`.
+- **`breath`** — every fan in sync, sinusoidal swell with a power curve
+  so the peak lingers. Calmest of the four.
+
+The pattern selector uses a 0.1-wide hysteresis deadband around 0.5 on
+each axis, so baselines wobbling near the threshold don't cause
+flapping. Override the auto-selection from the web UI's pattern button
+group, or programmatically:
+
+```python
+settings.set_forced_pattern("vortex")  # lock
+settings.set_forced_pattern(None)      # release
+```
+
+Gust and stillness events run *across* pattern transitions: a gust that
+starts under `wander` finishes naturally under `sweep`.
+
 ## Web UI
 
 `main.py` starts a small FastAPI server on **port 8080** in a daemon
@@ -121,12 +157,16 @@ network to see:
 - Pi system stats (CPU temp, load, memory, disk, throttle status)
 - Loop "age" indicator that turns yellow / red if the main loop stalls
 
-…and three controls:
+…and four controls:
 
 - **Master intensity** (0×–2× slider) — boosts or trims overall energy
   without touching `config.py`.
 - **Force awake** toggle — pins presence to AWAKE during a viewing so
   the piece doesn't go to sleep while people are watching it.
+- **Choreography pattern** — auto, or lock to a specific named pattern
+  (`wander`, `sweep`, `vortex`, `breath`). See
+  [Choreography patterns](#choreography-patterns) below for what each
+  one looks like. Pattern transitions cross-fade smoothly over ~1.5s.
 - **Manual fan override** — per-fan sliders that take complete control
   of the fans. Useful for show-floor demos and acceptance testing.
   Click "Release to auto" to hand back to the algorithm.
@@ -146,6 +186,7 @@ POST /api/config           # bulk-update any subset of settings
 POST /api/control/fans     # {"speeds":[...]} or {"speeds":null} to release
 POST /api/control/intensity         # {"multiplier": 0.0..2.0}
 POST /api/control/force-awake       # {"enabled": bool}
+POST /api/control/pattern           # {"pattern": "wander"|"sweep"|"vortex"|"breath"|null}
 ```
 
 The web UI is a single `index.html` (no CDN, no build step), so the
@@ -231,9 +272,12 @@ sensors → mood_engine → wind_algorithm → fan_controller
 - **`mood_engine.py`** runs the AWAKE → SLEEPING → ASLEEP → WAKING
   state machine on the PIR, and exponentially smooths the BME688 +
   BH1750 readings into wind parameters.
-- **`wind_algorithm.py`** layers Perlin baselines (one stream per fan),
-  half-sine-shaped gust events, and stillness pauses, then applies
-  visibility scaling driven by ambient light.
+- **`wind_algorithm.py`** dispatches to one of four named patterns
+  (`wander`, `sweep`, `vortex`, `breath`) for the per-fan baseline,
+  then layers half-sine-shaped gust events and stillness pauses on top
+  and applies visibility scaling driven by ambient light. Pattern
+  changes cross-fade over ~1.5 s. See
+  [Choreography patterns](#choreography-patterns).
 - **`fan_controller.py`** owns four `gpiozero.PWMOutputDevice`
   instances and stages startup to avoid a current spike.
 - **`oled_display.py`** renders the live status frame, scoping all

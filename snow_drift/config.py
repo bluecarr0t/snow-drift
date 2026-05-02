@@ -84,6 +84,36 @@ MIN_RUNNING_DUTY: Final[float] = 0.18
 WIND_TIME_WRAP_SECONDS: Final[float] = 1_000_000.0
 
 # ---------------------------------------------------------------------------
+# Choreography patterns
+# ---------------------------------------------------------------------------
+# Order is significant: it's the order shown in the web UI and used as
+# the canonical iteration order in tests.
+PATTERNS: Final[tuple[str, ...]] = ("wander", "sweep", "vortex", "breath")
+
+# How long to cross-fade between patterns when the mood engine picks a
+# new one. Smoothstep blend; longer values feel more deliberate.
+PATTERN_FADE_SECONDS: Final[float] = 1.5
+
+# Hysteresis thresholds for pattern selection (axes: intensity & chaos,
+# both already in [0, 1] from the mood engine's smoothing). When the
+# current pattern lives in a "high" quadrant on an axis, the value has
+# to drop below the LOW threshold to flip; when "low", it has to rise
+# above the HIGH threshold. The 0.1 deadband prevents flapping when
+# baselines wobble around 0.5.
+PATTERN_INTENSITY_HIGH: Final[float] = 0.55
+PATTERN_INTENSITY_LOW: Final[float] = 0.45
+PATTERN_CHAOS_HIGH: Final[float] = 0.55
+PATTERN_CHAOS_LOW: Final[float] = 0.45
+
+# Per-pattern timing knobs. Tune for visual taste.
+SWEEP_LAG_SECONDS: Final[float] = 0.4   # delay between adjacent fans
+SWEEP_NOISE_SCALE: Final[float] = 0.5   # bigger = faster wave evolution
+VORTEX_PERIOD_SECONDS: Final[float] = 4.0   # seconds per full rotation
+VORTEX_PEAK_BASELINE: Final[float] = 0.15   # off-fans never go fully still
+BREATH_PERIOD_SECONDS: Final[float] = 8.0   # seconds per inhale+exhale
+BREATH_SHAPE: Final[float] = 1.3            # >1 lingers near peak
+
+# ---------------------------------------------------------------------------
 # Sensor read intervals
 # ---------------------------------------------------------------------------
 PIR_READ_HZ: Final[float] = 10.0
