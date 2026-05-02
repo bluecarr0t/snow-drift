@@ -109,6 +109,67 @@ python snow_drift/main.py
 `Ctrl+C` shuts everything down cleanly: fans go to 0%, OLED clears,
 GPIO is released.
 
+## Auto-start as a systemd service
+
+For permanent installations, run Snow Drift under systemd so it
+starts on boot, restarts on crash, and writes structured logs to the
+journal. From the repo root on the Pi:
+
+```bash
+sudo ./deploy/install.sh
+sudo systemctl start snow-drift
+```
+
+The installer auto-detects the invoking user, the repo path, and the
+system Python interpreter. Override any of them with flags:
+
+```bash
+sudo ./deploy/install.sh --user nick --workdir /home/nick/snow-drift
+```
+
+Re-run `sudo ./deploy/install.sh --restart` after any `git pull` to
+update the unit and bounce the service in one shot. Uninstall with
+`sudo ./deploy/uninstall.sh`.
+
+### Useful service commands
+
+```bash
+sudo systemctl start snow-drift          # start now
+sudo systemctl stop snow-drift           # stop
+sudo systemctl restart snow-drift        # bounce
+sudo systemctl status snow-drift         # one-shot health check
+journalctl -u snow-drift -f              # live tail
+journalctl -u snow-drift -p warning      # warnings + errors only
+journalctl -u snow-drift --since "1h ago"
+journalctl -u snow-drift -o cat          # raw lines, no metadata
+```
+
+When running under systemd the application detects this and emits log
+lines with syslog priorities (e.g. `<6>` for INFO, `<4>` for WARNING),
+which is what makes `journalctl -p warning` filter correctly.
+
+### Service policy
+
+The unit file (`deploy/snow-drift.service.template`) configures:
+
+- **Restart**: `on-failure` with a 5s cooldown and a 10-restarts-per-5min
+  rate limit, so a transient sensor blip recovers automatically but a
+  hard crash loop is contained.
+- **Memory**: 128 MB soft, 256 MB hard ceiling. The loop normally sits
+  well under 64 MB; the limit catches pathological leaks early.
+- **Shutdown**: 15 s `TimeoutStopSec` with `SIGTERM` so the Python
+  signal handler can stop the fans cleanly before systemd escalates.
+- **Hardening**: `NoNewPrivileges`, `ProtectKernelTunables`,
+  `ProtectKernelModules`, `ProtectControlGroups`, `ProtectHome=read-only`,
+  `PrivateTmp` — none of which interfere with `/dev/gpiochip*` or
+  `/dev/i2c-1`.
+- **Time / network**: waits for `time-sync.target` and
+  `network-online.target` so future weather-API features see correct
+  local time and a usable network from the very first tick.
+
+Adjust the template before running the installer to tweak any of the
+above.
+
 ## Tuning
 
 Every constant lives in [`config.py`](./config.py): GPIO pins, sleep /
@@ -153,30 +214,39 @@ sensors → mood_engine → wind_algorithm → fan_controller
 ## Layout
 
 ```
-snow_drift/
-├── README.md
-├── requirements.txt
-├── __init__.py
-├── __main__.py
-├── config.py
-├── main.py
-├── fan_controller.py
-├── oled_display.py
-├── wind_algorithm.py
-├── mood_engine.py
-├── sensors/
-│   ├── __init__.py
-│   ├── pir.py
-│   ├── environment.py
-│   └── light.py
-├── utils/
-│   ├── __init__.py
-│   └── perlin.py
-└── tests/
+snow-drift/                          # repo root
+├── deploy/
+│   ├── snow-drift.service.template  # systemd unit (placeholders)
+│   ├── install.sh                   # render + install + enable
+│   └── uninstall.sh                 # symmetric removal
+└── snow_drift/                      # Python package
+    ├── README.md
+    ├── requirements.txt
     ├── __init__.py
-    ├── test_single_fan.py
-    ├── test_all_fans.py
-    ├── test_oled.py
-    ├── test_sensors.py
-    └── test_full_system.py
+    ├── __main__.py
+    ├── config.py
+    ├── main.py
+    ├── fan_controller.py
+    ├── oled_display.py
+    ├── wind_algorithm.py
+    ├── mood_engine.py
+    ├── sensors/
+    │   ├── __init__.py
+    │   ├── pir.py
+    │   ├── environment.py
+    │   ├── light.py
+    │   └── poller.py
+    ├── tools/
+    │   ├── __init__.py
+    │   └── fan_console.py
+    ├── utils/
+    │   ├── __init__.py
+    │   └── perlin.py
+    └── tests/
+        ├── __init__.py
+        ├── test_single_fan.py
+        ├── test_all_fans.py
+        ├── test_oled.py
+        ├── test_sensors.py
+        └── test_full_system.py
 ```

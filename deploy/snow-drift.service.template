@@ -1,0 +1,58 @@
+[Unit]
+Description=Snow Drift kinetic sculpture controller
+Documentation=https://github.com/bluecarr0t/snow-drift
+# Wait for time sync (so future weather-API features see correct local time)
+# and for the network to actually be online, not just configured.
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
+
+[Service]
+Type=simple
+User=@@USER@@
+Group=@@GROUP@@
+WorkingDirectory=@@WORKDIR@@
+
+# PYTHONUNBUFFERED keeps log output flowing into journald in real time
+# even if Python decides our stderr is "not a TTY, let me batch."
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=@@WORKDIR@@
+
+ExecStart=@@PYTHON@@ -m snow_drift
+
+# Restart policy: keep the piece alive through transient failures while
+# refusing to mask a fundamentally broken build.
+#  - on-failure: only restart if main.py returns non-zero or is killed
+#                by a signal we didn't ask for (eg. OOM, SIGKILL).
+#  - 5s cooldown between restarts.
+#  - tighten to 10 restarts per 5 minutes; if we hit that we have a
+#    real bug, not a flaky sensor.
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+# Give the loop time to stop fans cleanly on shutdown. Our SIGTERM
+# handler typically completes in well under a second; 15s is generous.
+TimeoutStopSec=15
+KillSignal=SIGTERM
+
+# Soft memory ceiling. The whole loop should sit comfortably below
+# 64MB; 256MB catches a pathological leak before it OOMs the Pi.
+MemoryHigh=128M
+MemoryMax=256M
+
+# Hardening that doesn't break GPIO/I2C access:
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectHome=read-only
+PrivateTmp=true
+
+# Logs go straight to the journal. ``journalctl -u snow-drift`` to read.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=snow-drift
+
+[Install]
+WantedBy=multi-user.target

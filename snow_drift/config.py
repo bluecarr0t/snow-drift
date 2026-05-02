@@ -7,6 +7,8 @@ through the rest of the codebase. Constants are grouped by subsystem.
 from __future__ import annotations
 
 import logging
+import os
+import sys
 from typing import Final
 
 # ---------------------------------------------------------------------------
@@ -100,15 +102,65 @@ OLED_HEIGHT: Final[int] = 64
 # ---------------------------------------------------------------------------
 LOG_LEVEL: Final[int] = logging.INFO
 LOG_FORMAT: Final[str] = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+LOG_FORMAT_JOURNAL: Final[str] = "%(name)s: %(message)s"
+
+# Map Python log levels to RFC 5424 / syslog priority numbers. journald
+# reads the leading ``<N>`` from each line and uses it for filtering.
+_SYSLOG_PRIORITY: Final[dict[int, int]] = {
+    logging.DEBUG: 7,     # debug
+    logging.INFO: 6,      # info
+    logging.WARNING: 4,   # warning
+    logging.ERROR: 3,     # err
+    logging.CRITICAL: 2,  # crit
+}
+
+
+def _running_under_systemd() -> bool:
+    """Detect whether we're being supervised by systemd.
+
+    systemd sets ``INVOCATION_ID`` for every spawned unit and exposes
+    ``JOURNAL_STREAM`` when stdout/stderr are connected directly to the
+    journal. Either is sufficient evidence.
+    """
+    return bool(os.environ.get("INVOCATION_ID")) or bool(
+        os.environ.get("JOURNAL_STREAM")
+    )
+
+
+class _JournalFormatter(logging.Formatter):
+    """Render log records with a ``<priority>`` prefix for journald.
+
+    Strips the leading timestamp (journald has its own) and prepends a
+    syslog priority so ``journalctl -p warning`` etc. filter correctly.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(LOG_FORMAT_JOURNAL)
+
+    def format(self, record: logging.LogRecord) -> str:
+        prio = _SYSLOG_PRIORITY.get(record.levelno, 6)
+        return f"<{prio}>" + super().format(record)
 
 
 def configure_logging(level: int | None = None) -> None:
     """Configure the root logger with the project's standard format.
 
+    Auto-detects systemd: under a unit, log lines get a syslog priority
+    prefix and drop their timestamp (the journal adds both). Outside
+    systemd, you get a human-friendly timestamped format on stderr.
+
     Safe to call multiple times - only configures the root logger if
     no handlers are attached yet.
     """
-    if logging.getLogger().handlers:
+    root = logging.getLogger()
+    if root.handlers:
         return
-    logging.basicConfig(level=level if level is not None else LOG_LEVEL,
-                        format=LOG_FORMAT)
+
+    handler = logging.StreamHandler(sys.stderr)
+    if _running_under_systemd():
+        handler.setFormatter(_JournalFormatter())
+    else:
+        handler.setFormatter(logging.Formatter(LOG_FORMAT))
+
+    root.addHandler(handler)
+    root.setLevel(level if level is not None else LOG_LEVEL)
