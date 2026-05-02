@@ -1,0 +1,109 @@
+"""Bring-up test #5: dry-run of the full pipeline.
+
+Runs the same sensors → mood → wind → display flow as ``main.py`` but
+prints the commanded fan speeds to the console instead of driving the
+MOSFETs. Lets you verify the wind algorithm and mood engine are
+behaving without requiring physical fans.
+
+Run with::
+
+    python -m snow_drift.tests.test_full_system
+"""
+
+from __future__ import annotations
+
+import logging
+import sys
+import time
+
+from snow_drift import config
+from snow_drift.mood_engine import MoodEngine
+from snow_drift.oled_display import StatusDisplay
+from snow_drift.sensors.environment import EnvironmentSensor
+from snow_drift.sensors.light import LightSensor
+from snow_drift.sensors.pir import PIRSensor
+from snow_drift.wind_algorithm import WindAlgorithm
+
+logger = logging.getLogger(__name__)
+
+
+def _bar(value: float, width: int = 20) -> str:
+    """Render a 0..1 value as a unicode-free ASCII bar."""
+    filled = max(0, min(width, int(round(value * width))))
+    return "[" + "#" * filled + "." * (width - filled) + "]"
+
+
+def main() -> int:
+    config.configure_logging()
+    logger.info("Full-system DRY RUN - fans will NOT spin.")
+
+    pir = PIRSensor(config.PIR_PIN)
+    env_sensor = EnvironmentSensor()
+    light_sensor = LightSensor()
+    oled = StatusDisplay()
+    mood_engine = MoodEngine()
+    wind_algo = WindAlgorithm(num_fans=len(config.FAN_PINS))
+
+    target_period = 1.0 / config.UPDATE_RATE_HZ
+    last_time = time.time()
+    last_print = 0.0
+    last_oled_update = 0.0
+    start_time = last_time
+
+    try:
+        while True:
+            now = time.time()
+            dt = now - last_time
+            last_time = now
+
+            motion = pir.is_motion_detected()
+            env = env_sensor.read()
+            lux = light_sensor.read()
+
+            mood_engine.update_presence(motion)
+            mood_engine.update_environment(
+                env["temp_c"], env["humidity"], lux
+            )
+            mood_params = mood_engine.get_wind_params()
+            speeds = wind_algo.step(dt, mood_params)
+
+            if now - last_oled_update > 1.0 / config.OLED_UPDATE_HZ:
+                oled.render(
+                    {
+                        "fan_speeds": speeds,
+                        "temperature_f": env_sensor.temperature_f(),
+                        "humidity": env["humidity"],
+                        "lux": lux,
+                        "presence_state": mood_engine.presence_state,
+                        "mood_label": mood_params["mood_label"],
+                        "uptime_seconds": now - start_time,
+                    }
+                )
+                last_oled_update = now
+
+            # Throttle console output to ~2 Hz so it's readable.
+            if now - last_print > 0.5:
+                line = (
+                    f"{mood_engine.presence_state:8} "
+                    f"{mood_params['mood_label']:18} "
+                    f"int={mood_params['base_intensity']:.2f} "
+                    f"gust={mood_params['gust_rate']:.2f} "
+                    f"vis={mood_params['visibility_factor']:.2f}  "
+                )
+                for idx, s in enumerate(speeds):
+                    line += f"F{idx + 1}{_bar(s, 10)} "
+                print(line, flush=True)
+                last_print = now
+
+            elapsed = time.time() - now
+            time.sleep(max(0.0, target_period - elapsed))
+    except KeyboardInterrupt:
+        logger.info("Interrupted")
+        return 0
+    finally:
+        oled.clear()
+        pir.cleanup()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

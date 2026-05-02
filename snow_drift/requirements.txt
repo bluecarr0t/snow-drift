@@ -1,0 +1,21 @@
+# Snow Drift dependencies
+# Install on the Pi with:
+#   pip install -r requirements.txt --break-system-packages
+
+# GPIO + hardware PWM (Pi 5 compatible)
+gpiozero>=2.0
+# gpiozero needs a pin factory backend; lgpio is the modern Pi 5 default.
+lgpio>=0.2.2.0
+
+# OLED display
+luma.oled>=3.13
+Pillow>=10.0
+
+# CircuitPython platform glue (provides board / busio for Adafruit drivers)
+adafruit-blinka>=8.0
+
+# Environmental sensor (BME680 driver covers BME688)
+adafruit-circuitpython-bme680>=3.4
+
+# Ambient light sensor
+adafruit-circuitpython-bh1750>=1.1
