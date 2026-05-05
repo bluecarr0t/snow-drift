@@ -120,6 +120,18 @@ class FanController:
         """Return a copy of the current commanded speeds."""
         return list(self._speeds)
 
+    def pwm_readback(self, fan_index: int) -> Optional[float]:
+        """Return ``PWMOutputDevice.value`` for bring-up diagnostics, or ``None``."""
+        if not 0 <= fan_index < len(self._devices):
+            return None
+        device = self._devices[fan_index]
+        if device is None:
+            return None
+        raw = getattr(device, "value", None)
+        if raw is None:
+            return None
+        return float(raw)
+
     def stop_all(self) -> None:
         """Set all fans to 0% duty cycle."""
         self.set_all([0.0] * len(self.pins))
