@@ -99,24 +99,23 @@ After `git clone` / `git pull`, from the repo root on **nimbus**:
 
 ```bash
 cd ~/snow-drift   # or your clone path
-python3 test_fan.py
+python3 test_single_fan_simple.py
 # same thing:
-python3 -m snow_drift.tests.test_fan
+python3 -m snow_drift.tests.test_single_fan_simple
 ```
 
-Default uses **Fan 1** → **BCM 18** (your wiring). Options:
+That runs **Fan 1** (BCM **18**) at **100%** until **Ctrl+C** — the smallest sanity check after wiring.
+
+For a timed ramp / hold / ramp, use:
 
 ```bash
-python3 test_fan.py --fan 1
-python3 test_fan.py --gpio 18 --ramp 3 --hold 2
+python3 -m snow_drift.tests.test_single_fan
 ```
-
-`snow_drift.tests.test_single_fan` is the same ramp curve without CLI flags.
 
 ### Minimal scratch script (not required)
 
-If you want a tiny `gpiozero` one-off in `~/test_fan.py`, this matches the
-idea of the bring-up you described (no project package):
+If you want a tiny `gpiozero` one-off script on the Pi (e.g. in your home
+directory), this matches the idea of a minimal bring-up (no project package):
 
 ```python
 from gpiozero import PWMOutputDevice
@@ -137,8 +136,8 @@ fan1.close()
 print("Done.")
 ```
 
-Prefer the repo’s `test_fan.py` so behavior stays aligned with
-`FanController` (frequency, cleanup, future multi-fan work).
+Prefer `test_single_fan_simple.py` / `-m snow_drift.tests.test_single_fan_simple`
+so behavior stays aligned with `FanController` (frequency, cleanup).
 
 ---
 

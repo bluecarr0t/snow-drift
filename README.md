@@ -137,8 +137,8 @@ root:
 
 ```bash
 # Bring-up tests, in order
-python -m snow_drift.tests.test_single_fan      # Fan 1 only
-python -m snow_drift.tests.test_fan             # Fan 1 (CLI: --fan / --gpio)
+python -m snow_drift.tests.test_single_fan         # Fan 1 ramp up / hold / down
+python -m snow_drift.tests.test_single_fan_simple  # Fan 1 full ON until Ctrl+C
 python -m snow_drift.tests.test_all_fans        # All four fans in turn
 python -m snow_drift.tests.test_oled            # Animate the OLED
 python -m snow_drift.tests.test_sensors         # 30s sensor readout
@@ -347,7 +347,7 @@ sensors → mood_engine → wind_algorithm → fan_controller
 snow-drift/                          # repo root
 ├── README.md
 ├── HARDWARE_SETUP.md                # single-fan breadboard (Pi 5)
-├── test_fan.py                      # launcher: single-fan PWM bring-up
+├── test_single_fan_simple.py       # launcher: minimal full-speed fan test
 ├── deploy/
 │   ├── snow-drift.service.template  # systemd unit (placeholders)
 │   ├── install.sh                   # render + install + enable
@@ -385,7 +385,7 @@ snow-drift/                          # repo root
     └── tests/
         ├── __init__.py
         ├── test_single_fan.py
-        ├── test_fan.py
+        ├── test_single_fan_simple.py
         ├── test_all_fans.py
         ├── test_oled.py
         ├── test_sensors.py
