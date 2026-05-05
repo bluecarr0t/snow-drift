@@ -9,6 +9,9 @@ Each subsystem fails soft on init, so a missing sensor (or a
 non-Pi development environment) only logs a warning - the loop keeps
 running with cached defaults. ``Ctrl+C`` and ``SIGTERM`` both trigger a
 clean shutdown that turns every fan off and clears the OLED.
+
+Hardware bring-up (single-fan breadboard, Pi 5): see ``HARDWARE_SETUP.md``
+at the repo root.
 """
 
 from __future__ import annotations
